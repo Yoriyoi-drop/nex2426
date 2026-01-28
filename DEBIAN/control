@@ -1,0 +1,27 @@
+Package: nex2426
+Version: 0.1.0
+Section: security
+Priority: optional
+Architecture: amd64
+Depends: libc6 (>= 2.31), libgcc-s1 (>= 4.2)
+Maintainer: NEX2426 Development Team <dev@nex2426.io>
+Homepage: https://github.com/nex2426/nex2426
+Description: Quantum-Resistant Chaos Encryption Engine
+ NEX2426 is a sophisticated encryption system that provides
+ multiple layers of security against both classical and quantum
+ computer attacks.
+ .
+ Features:
+  • Post-quantum lattice-based cryptography
+  • Chaos-based non-linear transformations
+  • White-box obfuscation techniques
+  • Memory-hardening against hardware attacks
+  • Temporal binding for non-repudiation
+  • File encryption with bio-lock and stealth modes
+  • Interactive shell for real-time hashing
+  • Performance benchmarking tools
+  • Quantum-resistant blockchain implementation
+ .
+ This package includes the complete NEX2426 engine with
+ command-line interface, documentation, and system integration
+ components suitable for production deployment.

@@ -1,0 +1,412 @@
+#!/bin/bash
+
+# NEX2426 Installation Script
+# Quantum-Resistant Chaos Encryption Engine
+
+set -e
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+CYAN='\033[0;36m'
+NC='\033[0m' # No Color
+
+# Configuration
+PROGRAM_NAME="nex2426"
+INSTALL_DIR="/usr/local/bin"
+DOC_DIR="/usr/local/share/doc/nex2426"
+MAN_DIR="/usr/local/share/man/man1"
+SERVICE_DIR="/etc/systemd/system"
+
+# Print banner
+print_banner() {
+    echo -e "${CYAN}"
+    echo "███╗   ██╗███████╗██╗  ██╗    ██████╗ ██╗  ██╗██████╗  ██████╗ "
+    echo "████╗  ██║██╔════╝╚██╗██╔╝    ╚════██╗██║  ██║╚════██╗██╔════╝ "
+    echo "██╔██╗ ██║█████╗   ╚███╔╝█████╗██████╔╝███████║ █████╔╝███████╗"
+    echo "██║╚██╗██║██╔══╝   ██╔██╗╚════╝██╔═══╝ ╚════██║██╔═══╝ ██╔═══██╗"
+    echo "██║ ╚████║███████╗██╔╝ ██╗     ███████╗     ██║███████╗╚██████╔╝"
+    echo "╚═╝  ╚═══╝╚══════╝╚═╝  ╚═╝     ╚══════╝     ╚═╝╚══════╝ ╚═════╝ "
+    echo "      >>> QUANTUM-RESISTANT CHAOS ENCRYPTION ENGINE <<<"
+    echo -e "${NC}"
+}
+
+# Check if running as root
+check_root() {
+    if [[ $EUID -ne 0 ]]; then
+        echo -e "${RED}Error: This script must be run as root (use sudo)${NC}"
+        exit 1
+    fi
+}
+
+# Check system requirements
+check_requirements() {
+    echo -e "${BLUE}Checking system requirements...${NC}"
+    
+    # Check if Rust is installed
+    if ! command -v cargo &> /dev/null; then
+        echo -e "${YELLOW}Rust not found. Installing Rust...${NC}"
+        curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+        source "$HOME/.cargo/env"
+    else
+        echo -e "${GREEN}✓ Rust is installed${NC}"
+    fi
+    
+    # Check system architecture
+    ARCH=$(uname -m)
+    if [[ $ARCH == "x86_64" ]]; then
+        echo -e "${GREEN}✓ x86_64 architecture supported${NC}"
+    else
+        echo -e "${YELLOW}Warning: $ARCH architecture not optimized${NC}"
+    fi
+    
+    # Check available memory
+    MEM_AVAILABLE=$(free -m | awk 'NR==2{printf "%.0f", $7}')
+    if [[ $MEM_AVAILABLE -lt 100 ]]; then
+        echo -e "${YELLOW}Warning: Low memory available ($MEM_AVAILABLE MB)${NC}"
+    else
+        echo -e "${GREEN}✓ Sufficient memory available ($MEM_AVAILABLE MB)${NC}"
+    fi
+}
+
+# Build the project
+build_project() {
+    echo -e "${BLUE}Building $PROGRAM_NAME...${NC}"
+    
+    # Clean previous builds
+    cargo clean 2>/dev/null || true
+    
+    # Build in release mode
+    if cargo build --release; then
+        echo -e "${GREEN}✓ Build successful${NC}"
+    else
+        echo -e "${RED}✗ Build failed${NC}"
+        exit 1
+    fi
+    
+    # Verify binary exists
+    if [[ -f "target/release/$PROGRAM_NAME" ]]; then
+        echo -e "${GREEN}✓ Binary created successfully${NC}"
+    else
+        echo -e "${RED}✗ Binary not found${NC}"
+        exit 1
+    fi
+}
+
+# Install binary
+install_binary() {
+    echo -e "${BLUE}Installing binary to $INSTALL_DIR...${NC}"
+    
+    # Create install directory if it doesn't exist
+    mkdir -p "$INSTALL_DIR"
+    
+    # Copy binary
+    cp "target/release/$PROGRAM_NAME" "$INSTALL_DIR/"
+    chmod +x "$INSTALL_DIR/$PROGRAM_NAME"
+    
+    echo -e "${GREEN}✓ Binary installed to $INSTALL_DIR/$PROGRAM_NAME${NC}"
+}
+
+# Install documentation
+install_docs() {
+    echo -e "${BLUE}Installing documentation...${NC}"
+    
+    # Create documentation directory
+    mkdir -p "$DOC_DIR"
+    mkdir -p "$MAN_DIR"
+    
+    # Copy documentation files
+    if [[ -d "docs" ]]; then
+        cp -r docs/* "$DOC_DIR/"
+        echo -e "${GREEN}✓ Documentation installed to $DOC_DIR${NC}"
+    else
+        echo -e "${YELLOW}Warning: No documentation found${NC}"
+    fi
+    
+    # Create man page
+    cat > "$MAN_DIR/nex2426.1" << 'EOF'
+.TH NEX2426 1 "2025-01-28" "NEX2426 Manual"
+.SH NAME
+nex2426 \- Quantum-Resistant Chaos Encryption Engine
+.SH SYNOPSIS
+.B nex2426
+[\fIOPTIONS\fR] [\fIINPUT\fR] [\fIKEY\fR] [\fICOST\fR]
+.SH DESCRIPTION
+NEX2426 is a quantum-resistant encryption engine that provides
+multiple layers of cryptographic security including lattice-based
+cryptography, chaos-based encryption, and white-box obfuscation.
+.SH OPTIONS
+.TP
+\fB\--encrypt\fR \fIFILE\fR \fIKEY\fR [\fICOST\fR] [\fI--bio-lock\fR] [\fI--stealth\fR]
+Encrypt a file with specified options.
+.TP
+\fB\--decrypt\fR \fIFILE\fR \fIKEY\fR [\fI--stealth\fR]
+Decrypt an encrypted file.
+.TP
+\fB\--bench\fR [\fICOST\fR]
+Run performance benchmark.
+.TP
+\fB\--blockchain\fR
+Demonstrate quantum ledger functionality.
+.TP
+\fB\--sign\fR [\fIMESSAGE\fR]
+Generate cryptographic signature.
+.TP
+\fB\--file\fR \fIFILE\fR \fIKEY\fR [\fICOST\fR]
+Hash file contents.
+.SH EXAMPLES
+.nf
+# Encrypt a file
+nex2426 --encrypt secret.txt "mypassword" 3 --bio-lock
+
+# Decrypt a file
+nex2426 --decrypt secret.txt.nex2426 "mypassword"
+
+# Hash a string
+nex2426 "Hello World" "mykey" 3
+
+# Run benchmark
+nex2426 --bench 3
+.fi
+.SH AUTHOR
+Generated by NEX2426 installation script.
+.SH SEE ALSO
+Full documentation available at: /usr/local/share/doc/nex2426/
+EOF
+    
+    # Update man database
+    mandb 2>/dev/null || true
+    
+    echo -e "${GREEN}✓ Man page installed${NC}"
+}
+
+# Create systemd service (optional)
+create_service() {
+    if command -v systemctl &> /dev/null; then
+        echo -e "${BLUE}Creating systemd service...${NC}"
+        
+        cat > "$SERVICE_DIR/nex2426.service" << EOF
+[Unit]
+Description=NEX2426 Quantum-Resistant Encryption Service
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=$INSTALL_DIR/nex2426 --service
+Restart=always
+RestartSec=5
+User=nex2426
+Group=nex2426
+
+# Security settings
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/nex2426
+
+[Install]
+WantedBy=multi-user.target
+EOF
+        
+        # Create service user
+        if ! id "nex2426" &>/dev/null; then
+            useradd -r -s /bin/false -d /var/lib/nex2426 nex2426
+            mkdir -p /var/lib/nex2426
+            chown nex2426:nex2426 /var/lib/nex2426
+        fi
+        
+        echo -e "${GREEN}✓ Systemd service created${NC}"
+        echo -e "${YELLOW}Note: Enable with 'systemctl enable nex2426'${NC}"
+    else
+        echo -e "${YELLOW}Systemd not available, skipping service creation${NC}"
+    fi
+}
+
+# Create configuration directory
+create_config() {
+    echo -e "${BLUE}Creating configuration...${NC}"
+    
+    CONFIG_DIR="/etc/nex2426"
+    mkdir -p "$CONFIG_DIR"
+    
+    # Create default configuration
+    cat > "$CONFIG_DIR/config.toml" << 'EOF'
+# NEX2426 Configuration File
+
+[default]
+# Default cost factor (1-10)
+cost = 3
+
+# Enable temporal binding by default
+temporal_binding = true
+
+# Number of threads (0 = auto)
+threads = 0
+
+# Memory limit in MB (0 = unlimited)
+memory_limit = 0
+
+[security]
+# Enable bio-lock by default for file encryption
+bio_lock_default = false
+
+# Enable stealth mode by default
+stealth_default = false
+
+# Minimum key length
+min_key_length = 8
+
+[performance]
+# Enable AVX2 optimizations (if available)
+avx2_optimization = true
+
+# Enable parallel processing
+parallel_processing = true
+
+# Cache size in MB
+cache_size = 64
+
+[logging]
+# Log level (error, warn, info, debug, trace)
+level = "info"
+
+# Log file path (empty = stderr)
+file = ""
+
+# Enable performance logging
+performance_logging = false
+EOF
+    
+    chmod 644 "$CONFIG_DIR/config.toml"
+    echo -e "${GREEN}✓ Configuration created at $CONFIG_DIR/config.toml${NC}"
+}
+
+# Run post-install tests
+run_tests() {
+    echo -e "${BLUE}Running post-install tests...${NC}"
+    
+    # Test basic functionality
+    TEST_RESULT=$("$INSTALL_DIR/$PROGRAM_NAME" "test" "testkey" 1 2>/dev/null | grep -c "nex6" || echo "0")
+    if [[ $TEST_RESULT -gt 0 ]]; then
+        echo -e "${GREEN}✓ Basic hashing test passed${NC}"
+    else
+        echo -e "${RED}✗ Basic hashing test failed${NC}"
+        return 1
+    fi
+    
+    # Test benchmark
+    BENCH_RESULT=$("$INSTALL_DIR/$PROGRAM_NAME" --bench 1 2>/dev/null | grep -c "Hashes/Second" || echo "0")
+    if [[ $BENCH_RESULT -gt 0 ]]; then
+        echo -e "${GREEN}✓ Benchmark test passed${NC}"
+    else
+        echo -e "${RED}✗ Benchmark test failed${NC}"
+        return 1
+    fi
+    
+    echo -e "${GREEN}✓ All tests passed${NC}"
+}
+
+# Cleanup
+cleanup() {
+    echo -e "${BLUE}Cleaning up...${NC}"
+    rm -f test.txt test.txt.nex2426
+    cargo clean 2>/dev/null || true
+}
+
+# Print installation summary
+print_summary() {
+    echo -e "${CYAN}"
+    echo "═══════════════════════════════════════════════════════════════"
+    echo "                    INSTALLATION COMPLETE"
+    echo "═══════════════════════════════════════════════════════════════"
+    echo -e "${NC}"
+    echo -e "${GREEN}✓ Binary installed: ${INSTALL_DIR}/$PROGRAM_NAME${NC}"
+    echo -e "${GREEN}✓ Documentation: ${DOC_DIR}${NC}"
+    echo -e "${GREEN}✓ Configuration: /etc/nex2426/config.toml${NC}"
+    echo -e "${GREEN}✓ Man page: man nex2426${NC}"
+    
+    if command -v systemctl &> /dev/null; then
+        echo -e "${GREEN}✓ Service: $SERVICE_DIR/nex2426.service${NC}"
+    fi
+    
+    echo
+    echo -e "${BLUE}Quick Start:${NC}"
+    echo -e "  ${YELLOW}nex2426 \"Hello World\" \"mykey\" 3${NC}     # Hash a string"
+    echo -e "  ${YELLOW}nex2426 --encrypt file.txt \"pass\" 3${NC}   # Encrypt a file"
+    echo -e "  ${YELLOW}nex2426 --decrypt file.txt.nex2426 \"pass\"${NC} # Decrypt a file"
+    echo -e "  ${YELLOW}nex2426 --bench 3${NC}                     # Run benchmark"
+    echo -e "  ${YELLOW}man nex2426${NC}                           # View manual"
+    echo
+    echo -e "${BLUE}Documentation:${NC}"
+    echo -e "  ${YELLOW}less $DOC_DIR/README.md${NC}                # Main documentation"
+    echo -e "  ${YELLOW}less $DOC_DIR/API.md${NC}                   # API reference"
+    echo -e "  ${YELLOW}less $DOC_DIR/SECURITY.md${NC}              # Security analysis"
+    echo -e "  ${YELLOW}less $DOC_DIR/ARCHITECTURE.md${NC}          # Architecture guide"
+    echo
+    echo -e "${GREEN}NEX2426 is ready for production use!${NC}"
+    echo -e "${CYAN}═══════════════════════════════════════════════════════════════${NC}"
+}
+
+# Main installation flow
+main() {
+    print_banner
+    echo
+    
+    check_root
+    check_requirements
+    echo
+    
+    build_project
+    echo
+    
+    install_binary
+    install_docs
+    create_config
+    create_service
+    echo
+    
+    if run_tests; then
+        cleanup
+        print_summary
+    else
+        echo -e "${RED}Installation failed during testing${NC}"
+        cleanup
+        exit 1
+    fi
+}
+
+# Handle script arguments
+case "${1:-}" in
+    --help|-h)
+        echo "NEX2426 Installation Script"
+        echo "Usage: $0 [--help|--uninstall]"
+        echo
+        echo "Options:"
+        echo "  --help      Show this help message"
+        echo "  --uninstall Remove NEX2426 installation"
+        exit 0
+        ;;
+    --uninstall)
+        echo -e "${YELLOW}Uninstalling NEX2426...${NC}"
+        rm -f "$INSTALL_DIR/$PROGRAM_NAME"
+        rm -rf "$DOC_DIR"
+        rm -f "$MAN_DIR/nex2426.1"
+        rm -rf "$CONFIG_DIR"
+        rm -f "$SERVICE_DIR/nex2426.service"
+        systemctl daemon-reload 2>/dev/null || true
+        userdel nex2426 2>/dev/null || true
+        echo -e "${GREEN}✓ NEX2426 uninstalled successfully${NC}"
+        exit 0
+        ;;
+    "")
+        main
+        ;;
+    *)
+        echo -e "${RED}Unknown option: $1${NC}"
+        echo "Use --help for usage information"
+        exit 1
+        ;;
+esac

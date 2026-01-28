@@ -1,0 +1,30 @@
+#!/bin/bash
+
+set -e
+
+# Pre-removal script for NEX2426 Debian package
+
+case "$1" in
+    remove|upgrade|failed-upgrade)
+        # Stop systemd service if it's running
+        if systemctl --version >/dev/null 2>&1; then
+            if systemctl is-active --quiet nex2426; then
+                systemctl stop nex2426
+            fi
+            if systemctl is-enabled --quiet nex2426; then
+                systemctl disable nex2426
+            fi
+        fi
+        ;;
+    
+    deconfigure)
+        # Handle deconfiguration
+        ;;
+    
+    *)
+        echo "prerm called with unknown argument \`$1'" >&2
+        exit 1
+        ;;
+esac
+
+exit 0

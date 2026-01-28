@@ -1,0 +1,100 @@
+#!/bin/bash
+
+set -e
+
+# Post-installation script for NEX2426 Debian package
+
+case "$1" in
+    configure)
+        # Create nex2426 user if it doesn't exist
+        if ! getent passwd nex2426 >/dev/null 2>&1; then
+            adduser --system --group --home /var/lib/nex2426 --no-create-home nex2426
+        fi
+        
+        # Create configuration directory
+        mkdir -p /etc/nex2426
+        mkdir -p /var/lib/nex2426
+        mkdir -p /var/log/nex2426
+        
+        # Set permissions
+        chown -R nex2426:nex2426 /var/lib/nex2426
+        chown -R nex2426:nex2426 /var/log/nex2426
+        chmod 755 /etc/nex2426
+        
+        # Create default configuration if it doesn't exist
+        if [ ! -f /etc/nex2426/config.toml ]; then
+            cat > /etc/nex2426/config.toml << 'EOF'
+# NEX2426 Configuration File
+
+[default]
+# Default cost factor (1-10)
+cost = 3
+
+# Enable temporal binding by default
+temporal_binding = true
+
+# Number of threads (0 = auto)
+threads = 0
+
+# Memory limit in MB (0 = unlimited)
+memory_limit = 0
+
+[security]
+# Enable bio-lock by default for file encryption
+bio_lock_default = false
+
+# Enable stealth mode by default
+stealth_default = false
+
+# Minimum key length
+min_key_length = 8
+
+[performance]
+# Enable AVX2 optimizations (if available)
+avx2_optimization = true
+
+# Enable parallel processing
+parallel_processing = true
+
+# Cache size in MB
+cache_size = 64
+
+[logging]
+# Log level (error, warn, info, debug, trace)
+level = "info"
+
+# Log file path (empty = stderr)
+file = "/var/log/nex2426/nex2426.log"
+
+# Enable performance logging
+performance_logging = false
+EOF
+            chmod 644 /etc/nex2426/config.toml
+        fi
+        
+        # Update man database
+        mandb 2>/dev/null || true
+        
+        # Enable systemd service if available
+        if systemctl --version >/dev/null 2>&1; then
+            systemctl daemon-reload
+            echo "NEX2426 installed. Enable the service with:"
+            echo "  sudo systemctl enable nex2426"
+            echo "  sudo systemctl start nex2426"
+        fi
+        
+        echo "NEX2426 installation complete!"
+        echo "Use 'man nex2426' for usage instructions."
+        ;;
+    
+    abort-upgrade)
+        # Handle upgrade abort
+        ;;
+    
+    *)
+        echo "postinst called with unknown argument \`$1'" >&2
+        exit 1
+        ;;
+esac
+
+exit 0

@@ -1,0 +1,38 @@
+#!/bin/bash
+
+set -e
+
+# Post-removal script for NEX2426 Debian package
+
+case "$1" in
+    purge)
+        # Remove configuration files and directories
+        rm -rf /etc/nex2426
+        rm -rf /var/lib/nex2426
+        rm -rf /var/log/nex2426
+        
+        # Remove system user
+        if getent passwd nex2426 >/dev/null 2>&1; then
+            deluser --system nex2426 || true
+        fi
+        
+        # Remove systemd service
+        rm -f /etc/systemd/system/nex2426.service
+        if systemctl --version >/dev/null 2>&1; then
+            systemctl daemon-reload
+        fi
+        
+        echo "NEX2426 completely removed."
+        ;;
+    
+    remove|upgrade|failed-upgrade)
+        # Basic cleanup
+        ;;
+    
+    *)
+        echo "postrm called with unknown argument \`$1'" >&2
+        exit 1
+        ;;
+esac
+
+exit 0

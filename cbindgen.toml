@@ -1,0 +1,19 @@
+language = "C"
+
+[export]
+prefix = "nex_"
+include = ["nex_kernel_create", "nex_kernel_destroy", "nex_hash_data", "nex_hash_string", "nex_result_free", "nex_get_version", "nex_get_build_info", "nex_benchmark", "nex_free_string"]
+
+[parse]
+parse_deps = true
+include = ["nex2426"]
+
+[fn]
+sort_by = "Name"
+
+[struct]
+derive_eq = true
+derive_neq = true
+
+[enum]
+prefix_with_name = true
