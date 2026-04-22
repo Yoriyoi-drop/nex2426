@@ -3,7 +3,7 @@
 //! Provides structured logging, performance monitoring, and security auditing
 //! capabilities for production environments.
 
-use std::time::{Duration, Instant};
+use std::time::Instant;
 use std::sync::{Arc, Mutex};
 use serde::{Serialize, Deserialize};
 
@@ -156,18 +156,21 @@ impl NexLogger {
     }
     
     /// Log performance metrics
-    pub fn log_performance(&self, metrics: PerformanceMetrics) {
+    pub fn log_performance(&self, metrics: PerformanceMetrics) -> crate::error::NexResult<()> {
         if !self.config.enable_performance_monitoring {
-            return;
+            return Ok(());
         }
         
-        let mut metrics_list = self.performance_metrics.lock().unwrap();
+        let mut metrics_list = self.performance_metrics.lock()
+            .map_err(|_| crate::error::NexError::Memory("Failed to acquire lock".to_string()))?;
         metrics_list.push(metrics);
         
         // Keep only last 1000 metrics
         if metrics_list.len() > 1000 {
             metrics_list.drain(0..500);
         }
+        
+        Ok(())
     }
     
     /// Log security audit
@@ -387,8 +390,8 @@ impl Default for SecuritySummary {
     }
 }
 
-/// Global logger instance
 lazy_static::lazy_static! {
+    /// Global logger instance
     static ref GLOBAL_LOGGER: Arc<Mutex<Option<NexLogger>>> = Arc::new(Mutex::new(None));
 }
 
@@ -415,48 +418,63 @@ pub fn log_with_context(level: LogLevel, module: &str, message: &str, context: s
 
 /// Log performance metrics using global logger
 pub fn log_performance(metrics: PerformanceMetrics) {
-    if let Some(logger) = GLOBAL_LOGGER.lock().unwrap().as_ref() {
-        logger.log_performance(metrics);
+    if let Ok(logger_guard) = GLOBAL_LOGGER.lock() {
+        if let Some(logger) = logger_guard.as_ref() {
+            let _ = logger.log_performance(metrics);
+        }
     }
 }
 
 /// Log security audit using global logger
 pub fn log_security(audit: SecurityAudit) {
-    if let Some(logger) = GLOBAL_LOGGER.lock().unwrap().as_ref() {
-        logger.log_security(audit);
+    if let Ok(logger_guard) = GLOBAL_LOGGER.lock() {
+        if let Some(logger) = logger_guard.as_ref() {
+            logger.log_security(audit);
+        }
     }
 }
 
 /// Get performance statistics from global logger
 pub fn get_performance_stats() -> Option<PerformanceStats> {
-    GLOBAL_LOGGER.lock().unwrap()
-        .as_ref()
-        .map(|logger| logger.get_performance_stats())
+    if let Ok(logger_guard) = GLOBAL_LOGGER.lock() {
+        if let Some(logger) = logger_guard.as_ref() {
+            return Some(logger.get_performance_stats());
+        }
+    }
+    None
 }
 
 /// Get security summary from global logger
 pub fn get_security_summary() -> Option<SecuritySummary> {
-    GLOBAL_LOGGER.lock().unwrap()
-        .as_ref()
-        .map(|logger| logger.get_security_summary())
+    if let Ok(logger_guard) = GLOBAL_LOGGER.lock() {
+        if let Some(logger) = logger_guard.as_ref() {
+            return Some(logger.get_security_summary());
+        }
+    }
+    None
 }
 
 /// Export logs from global logger
 pub fn export_logs() -> crate::error::NexResult<String> {
-    if let Some(logger) = GLOBAL_LOGGER.lock().unwrap().as_ref() {
-        let metrics = logger.performance_metrics.lock().unwrap();
+    if let Ok(logger_guard) = GLOBAL_LOGGER.lock() {
+        if let Some(logger) = logger_guard.as_ref() {
+            let metrics = logger.performance_metrics.lock()
+                .map_err(|_| crate::error::NexError::Memory("Failed to acquire lock".to_string()))?;
         
-        // Simple JSON export without complex serialization
-        let export_json = format!(
-            r#"{{"timestamp": "{}", "uptime_seconds": {}, "total_operations": {}}}"#,
-            chrono::Utc::now().to_rfc3339(),
-            logger.start_time.elapsed().as_secs(),
-            metrics.len()
-        );
-        
-        Ok(export_json)
+            // Simple JSON export without complex serialization
+            let export_json = format!(
+                r#"{{"timestamp": "{}", "uptime_seconds": {}, "total_operations": {}}}"#,
+                chrono::Utc::now().to_rfc3339(),
+                logger.start_time.elapsed().as_secs(),
+                metrics.len()
+            );
+            
+            Ok(export_json)
+        } else {
+            Err(crate::error::NexError::InvalidInput("Logger not initialized".to_string()))
+        }
     } else {
-        Err(crate::error::NexError::internal("Logger not initialized"))
+        Err(crate::error::NexError::InvalidInput("Logger not initialized".to_string()))
     }
 }
 

@@ -1,9 +1,9 @@
-//! Input validation utilities for NEX2426
+//! Input validation utilities for NEX2426 Secure Storage Engine
 //! 
 //! Provides comprehensive input validation for all public APIs to ensure
-//! security and prevent invalid states.
+//! security and prevent invalid states. Focus on secure storage applications.
 
-use crate::error::{NexError, NexResult};
+use crate::error::NexResult;
 use crate::ensure;
 
 /// Validate byte array input
@@ -90,17 +90,6 @@ pub fn validate_nonce(nonce: &[u8], name: &str) -> NexResult<()> {
     Ok(())
 }
 
-/// Validate cost/iteration parameters
-pub fn validate_cost(cost: u32, name: &str) -> NexResult<()> {
-    validate_numeric(cost, name, 1, 1000000)?; // 1 to 1M iterations
-    
-    // Warn about very high costs
-    if cost > 100000 {
-        eprintln!("Warning: {} ({}) is very high and may impact performance", name, cost);
-    }
-    
-    Ok(())
-}
 
 /// Validate thread count
 pub fn validate_thread_count(threads: usize) -> NexResult<()> {
@@ -123,6 +112,33 @@ pub fn validate_network_packet(packet: &[u32]) -> NexResult<()> {
     // Check for weak packets
     ensure!(!packet.iter().all(|&x| x == 0), invalid_input, "Network packet cannot be all zeros");
     
+    Ok(())
+}
+
+/// Validate cost parameter for memory-hard encryption
+pub fn validate_cost(cost: u32) -> NexResult<()> {
+    ensure!(cost >= 1, invalid_input, "Cost must be at least 1");
+    ensure!(cost <= 100, invalid_input, "Cost cannot exceed 100 (memory limit)");
+    Ok(())
+}
+
+/// Validate memory requirements for secure storage
+pub fn validate_memory_requirements(cost: u32, available_mb: u64) -> NexResult<()> {
+    let required_mb = (8 * cost) as u64; // 8MB per cost unit
+    ensure!(required_mb <= available_mb, 
+memory, 
+            "Insufficient memory: required {}MB, available {}MB", 
+            required_mb, available_mb);
+    Ok(())
+}
+
+/// Validate file size for encryption (prevent DoS)
+pub fn validate_file_size(size: u64, max_size_mb: u64) -> NexResult<()> {
+    let max_bytes = max_size_mb * 1024 * 1024;
+    ensure!(size <= max_bytes, 
+            invalid_input, 
+            "File too large: {}MB exceeds limit of {}MB", 
+            size / 1024 / 1024, max_size_mb);
     Ok(())
 }
 

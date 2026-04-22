@@ -6,7 +6,6 @@ use crate::blockchain::{Transaction, BlockchainError, BlockchainResult};
 use crate::kernel::NexKernel;
 use crate::transform::stage_chaos::ChaosEngine;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 
 /// Merkle Tree implementation for transaction verification
 #[derive(Debug, Clone)]

@@ -23,7 +23,8 @@ pub enum ChannelError {
     HandshakeFailed,
     IntegrityViolation,
     ReplayDetected,
-    DecryptionError
+    DecryptionError,
+    CryptoError
 }
 
 impl SecureSession {
@@ -86,7 +87,7 @@ impl SecureSession {
 
     /// Encrypts a message payload.
     /// Format: [Header: SessionID(8) | Counter(8)] [Payload: Encrypted] [Mac: HMAC(32)]
-    pub fn send_packet(&mut self, payload: &[u8]) -> Vec<u8> {
+    pub fn send_packet(&mut self, payload: &[u8]) -> Result<Vec<u8>, ChannelError> {
         let mut packet = Vec::with_capacity(16 + payload.len() + 32);
         
         // 1. Header
@@ -104,15 +105,18 @@ impl SecureSession {
         
         // 3. Authenticate (Encrypt-then-MAC)
         // HMAC Covers Header + Encrypted Payload
-        let mac_key = self.shared_secret.access();
-        let hmac = HmacNex::new(mac_key)?;
-        let tag = hmac.sign(&packet); // Packet so far is Header + Ciphertext
+        let mac_key = self.shared_secret.access()
+            .map_err(|_| ChannelError::CryptoError)?;
+        let hmac = HmacNex::new(mac_key)
+            .map_err(|_| ChannelError::CryptoError)?;
+        let tag = hmac.sign(&packet)
+            .map_err(|_| ChannelError::CryptoError)?; // Packet so far is Header + Ciphertext
         
         packet.extend_from_slice(&tag);
         
         self.tx_counter += 1;
         
-        packet
+        Ok(packet)
     }
     
     /// Decrypts a received packet.
@@ -125,8 +129,10 @@ impl SecureSession {
         let (data_part, mac_part) = packet.split_at(split_point);
         
         // 1. Verify HMAC
-        let mac_key = self.shared_secret.access();
-        let hmac = HmacNex::new(mac_key)?;
+        let mac_key = self.shared_secret.access()
+            .map_err(|_| ChannelError::CryptoError)?;
+        let hmac = HmacNex::new(mac_key)
+            .map_err(|_| ChannelError::CryptoError)?;
         if !hmac.verify(data_part, mac_part) {
             return Err(ChannelError::IntegrityViolation);
         }

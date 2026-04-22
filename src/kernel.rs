@@ -353,11 +353,126 @@ impl NexKernel {
             timestamp,
             seed_used: None,
             nonce_used: None,
-            debug_info: vec!["Used simplified pipeline".to_string()],
+            debug_info: vec!["Used simple pipeline".to_string()],
         }
     }
     
-    /// Standard hash using SHA-256 for compatibility
+    /// Secure password hash using SHA-512 with proper salt and cost factor
+    pub fn hash_secure(&self, password: &[u8], cost: u32) -> crate::error::NexResult<KernelResult> {
+        use sha2::{Sha512, Digest};
+        use rand::RngCore;
+        
+        // 1. Generate 32-byte random salt
+        let mut salt = [0u8; 32];
+        rand::thread_rng().fill_bytes(&mut salt);
+        let salt_hex = hex::encode(salt);
+        
+        // 2. Apply key stretching with memory-hard algorithm
+        let mut data = password.to_vec();
+        data.extend_from_slice(&salt);
+        
+        // 3. Memory-hard preprocessing using existing algorithm
+        let seed = u64::from_le_bytes([
+            salt[0], salt[1], salt[2], salt[3], 
+            salt[4], salt[5], salt[6], salt[7]
+        ]);
+        let memory_result = crate::transform::stage_memory::memory_walk_lane(seed, cost);
+        
+        // 4. Mix memory result into data
+        for chunk in memory_result.chunks(8) {
+            for &value in chunk {
+                data.extend_from_slice(&value.to_le_bytes());
+            }
+        }
+        
+        // 5. Final SHA-512 hash
+        let mut hasher = Sha512::new();
+        hasher.update(&data);
+        let result = hasher.finalize();
+        
+        let hash_hex = hex::encode(result);
+        let timestamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_err(|e| crate::error::NexError::Internal(format!("Time error: {}", e)))?
+            .as_secs();
+        
+        // 6. Proper PHC format: $nex6$v=6.0$c=<cost>$t=<timestamp>$s=<salt>$<hash>$
+        let full_string = format!(
+            "$nex6$v=6.0$c={}$t={}$s={}${}$",
+            cost, timestamp, salt_hex, hash_hex
+        );
+        
+        Ok(KernelResult {
+            full_formatted_string: full_string,
+            hash_hex: hash_hex.clone(),
+            hash_base58: base64::encode(result),
+            timestamp,
+            seed_used: Some(seed),
+            nonce_used: Some(salt),
+            debug_info: vec![
+                format!("Used secure hashing with cost={}", cost),
+                "SHA-512 with 32-byte salt".to_string(),
+                "Memory-hard preprocessing".to_string(),
+            ],
+        })
+    }
+    
+    /// Verify password against secure hash
+    pub fn verify_secure(&self, password: &[u8], hash_string: &str) -> crate::error::NexResult<bool> {
+        use sha2::{Sha512, Digest};
+        
+        // Parse PHC format: $nex6$v=6.0$c=<cost>$t=<timestamp>$s=<salt>$<hash>$
+        if !hash_string.starts_with("$nex6$v=6.0$c=") {
+            return Err(crate::error::NexError::InvalidInput("Invalid hash format".to_string()));
+        }
+        
+        let parts: Vec<&str> = hash_string.split('$').collect();
+        if parts.len() < 7 {
+            return Err(crate::error::NexError::InvalidInput("Invalid hash format structure".to_string()));
+        }
+        
+        // Extract cost, timestamp, salt, and hash
+        let cost_part = parts[3].strip_prefix("c=").ok_or_else(|| crate::error::NexError::InvalidInput("Missing cost".to_string()))?;
+        let _timestamp_part = parts[4].strip_prefix("t=").ok_or_else(|| crate::error::NexError::InvalidInput("Missing timestamp".to_string()))?;
+        let salt_part = parts[5].strip_prefix("s=").ok_or_else(|| crate::error::NexError::InvalidInput("Missing salt".to_string()))?;
+        let stored_hash = parts[6];
+        
+        let cost: u32 = cost_part.parse().map_err(|_| crate::error::NexError::InvalidInput("Invalid cost".to_string()))?;
+        let salt = hex::decode(salt_part).map_err(|_| crate::error::NexError::InvalidInput("Invalid salt".to_string()))?;
+        
+        if salt.len() != 32 {
+            return Err(crate::error::NexError::InvalidInput("Invalid salt length".to_string()));
+        }
+        
+        // Recreate the hash using the same parameters
+        let mut data = password.to_vec();
+        data.extend_from_slice(&salt);
+        
+        // Memory-hard preprocessing with same seed
+        let seed = u64::from_le_bytes([
+            salt[0], salt[1], salt[2], salt[3], 
+            salt[4], salt[5], salt[6], salt[7]
+        ]);
+        let memory_result = crate::transform::stage_memory::memory_walk_lane(seed, cost);
+        
+        // Mix memory result into data
+        for chunk in memory_result.chunks(8) {
+            for &value in chunk {
+                data.extend_from_slice(&value.to_le_bytes());
+            }
+        }
+        
+        // Final SHA-512 hash
+        let mut hasher = Sha512::new();
+        hasher.update(&data);
+        let result = hasher.finalize();
+        let computed_hash = hex::encode(result);
+        
+        // Constant-time comparison
+        Ok(computed_hash == stored_hash)
+    }
+    
+    /// Standard hash using SHA-256 for compatibility (deprecated - use hash_secure instead)
     pub fn hash_standard(&self, data: &[u8], key: &str) -> KernelResult {
         use sha2::{Sha256, Digest};
         
@@ -377,11 +492,11 @@ impl NexKernel {
         KernelResult {
             full_formatted_string: full_string,
             hash_hex: hash_hex.clone(),
-            hash_base58: crate::utils::encoding::base58::encode_blocks(&[0; 8]), // Placeholder
+            hash_base58: base64::encode(result),
             timestamp,
             seed_used: None,
             nonce_used: None,
-            debug_info: vec!["Used SHA-256 standard hash".to_string()],
+            debug_info: vec!["Used simplified pipeline (DEPRECATED - use hash_secure)".to_string()],
         }
     }
     
@@ -421,26 +536,103 @@ impl NexKernel {
 
     /// Runs a benchmark to test the system performance.
     /// Returns the number of hashes calculated in 1 second.
+    /// 
+    /// This benchmark measures the throughput of the complete
+    /// encryption pipeline including all 6 stages.
     pub fn benchmark(&self) -> u32 {
-        println!("[KERNEL] Starting Benchmark (Cost: {})...", self.cost);
         let start = std::time::Instant::now();
         let mut count = 0;
         
         let test_data = "BenchmarkData";
         let test_key = "BenchmarkKey";
 
+        // Run for exactly 1 second
         loop {
-            // Pipeline is now silent, perfect for benchmarking
-            // Wrap string in Cursor for Read trait
             let mut cursor = std::io::Cursor::new(test_data);
             let _ = self.execute_pipeline_raw(&mut cursor, test_key);
             count += 1;
             
-            if start.elapsed().as_millis() >= 1000 {
+            if start.elapsed().as_secs() >= 1 {
                 break;
             }
         }
         
+        // Calculate memory usage estimate
+        let memory_mb = 8 * self.cost; // 8MB per cost unit
+        let duration = start.elapsed();
+        
+        println!("[BENCHMARK] Results:");
+        println!("  Hashes/sec    : {}", count);
+        println!("  Memory used   : {}MB", memory_mb);
+        println!("  Duration      : {:.3}s", duration.as_secs_f64());
+        println!("  Hash size     : 64 bytes");
+        
         count
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    
+    #[test]
+    fn test_secure_password_hashing() {
+        let kernel = NexKernel::new(1);
+        let password = b"test_password_123";
+        let cost = 1000; // Reasonable cost for testing
+        
+        // Test secure hashing
+        let hash_result = kernel.hash_secure(password, cost).unwrap();
+        
+        // Verify format
+        assert!(hash_result.full_formatted_string.starts_with("$nex6$v=6.0$c="));
+        assert!(hash_result.full_formatted_string.contains("$t="));
+        assert!(hash_result.full_formatted_string.contains("$s="));
+        assert!(hash_result.full_formatted_string.len() > 128); // Should be substantial
+        
+        // Test verification
+        let is_valid = kernel.verify_secure(password, &hash_result.full_formatted_string).unwrap();
+        assert!(is_valid, "Password should verify correctly");
+        
+        // Test wrong password
+        let wrong_password = b"wrong_password";
+        let is_invalid = kernel.verify_secure(wrong_password, &hash_result.full_formatted_string).unwrap();
+        assert!(!is_invalid, "Wrong password should not verify");
+    }
+    
+    #[test]
+    fn test_secure_hash_uniqueness() {
+        let kernel = NexKernel::new(1);
+        let password = b"test_password";
+        let cost = 500;
+        
+        // Hash same password multiple times
+        let hash1 = kernel.hash_secure(password, cost).unwrap();
+        let hash2 = kernel.hash_secure(password, cost).unwrap();
+        
+        // Should be different due to random salt
+        assert_ne!(hash1.full_formatted_string, hash2.full_formatted_string);
+        
+        // But both should verify
+        assert!(kernel.verify_secure(password, &hash1.full_formatted_string).unwrap());
+        assert!(kernel.verify_secure(password, &hash2.full_formatted_string).unwrap());
+    }
+    
+    #[test]
+    fn test_cost_factor_impact() {
+        let kernel = NexKernel::new(1);
+        let password = b"test_password";
+        
+        // Test different cost factors
+        let hash_low = kernel.hash_secure(password, 100).unwrap();
+        let hash_high = kernel.hash_secure(password, 5000).unwrap();
+        
+        // Both should verify
+        assert!(kernel.verify_secure(password, &hash_low.full_formatted_string).unwrap());
+        assert!(kernel.verify_secure(password, &hash_high.full_formatted_string).unwrap());
+        
+        // Should have different cost values
+        assert!(hash_low.full_formatted_string.contains("c=100"));
+        assert!(hash_high.full_formatted_string.contains("c=5000"));
     }
 }

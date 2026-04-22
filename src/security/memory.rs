@@ -22,24 +22,33 @@ pub struct Protected<T: Zeroize> {
     inner: Option<T>,
 }
 
+/// Error type for Protected data access
+#[derive(Debug, Clone)]
+pub enum ProtectedError {
+    DataDropped,
+}
+
+impl std::fmt::Display for ProtectedError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ProtectedError::DataDropped => write!(f, "Attempted to access protected data after it was dropped"),
+        }
+    }
+}
+
+impl std::error::Error for ProtectedError {}
+
 impl<T: Zeroize> Protected<T> {
     pub fn new(data: T) -> Self {
         Self { inner: Some(data) }
     }
 
-    pub fn access(&self) -> &T {
-        self.inner.as_ref().unwrap_or_else(|| {
-            // Return a reference to a default value if data was dropped
-            // This is a safety fallback, though accessing dropped data is a programming error
-            panic!("Attempted to access protected data after it was dropped");
-        })
+    pub fn access(&self) -> Result<&T, ProtectedError> {
+        self.inner.as_ref().ok_or(ProtectedError::DataDropped)
     }
 
-    pub fn access_mut(&mut self) -> &mut T {
-        self.inner.as_mut().unwrap_or_else(|| {
-            // Return a reference to a default value if data was dropped
-            panic!("Attempted to access protected data after it was dropped");
-        })
+    pub fn access_mut(&mut self) -> Result<&mut T, ProtectedError> {
+        self.inner.as_mut().ok_or(ProtectedError::DataDropped)
     }
 }
 

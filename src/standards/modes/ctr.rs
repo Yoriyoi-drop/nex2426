@@ -1,5 +1,4 @@
 use crate::kernel::NexKernel;
-use std::io::Cursor;
 
 /// Industry Standard CTR (Counter) Mode
 /// Turns the NexKernel (PRF) into a Stream Cipher.

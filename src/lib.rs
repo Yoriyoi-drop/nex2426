@@ -1,7 +1,8 @@
-//! NEX2426 - Quantum-Resistant Chaos Encryption Engine
+//! NEX2426 - Secure Data Storage Encryption Engine
 //! 
 //! A sophisticated encryption system providing multiple layers of
-//! security against both classical and quantum computer attacks.
+//! security for data storage applications with memory-hard encryption
+//! and deterministic-chaotic diffusion.
 
 pub mod kernel;
 pub mod transform;
@@ -21,6 +22,7 @@ pub mod c_api;
 pub mod blockchain;
 pub mod error;
 pub mod validation;
+
 pub mod memory_opt;
 pub mod logging;
 

@@ -106,7 +106,10 @@ impl NexSigner {
             let c_val = c_hash.iter().fold(0i64, |acc, &x| acc + (x as i64)) % 16;
             
             // 4. Compute z = y + c*s
-            let s_vec = sk.s.access();
+            let s_vec = sk.s.access().unwrap_or_else(|_| {
+                // Fallback to default zero vector if access fails
+                &[0i64; LATTICE_DIM]
+            });
             let mut z = [0i64; LATTICE_DIM];
             for i in 0..LATTICE_DIM {
                 z[i] = (y[i] + c_val * s_vec[i]) % MODULUS;

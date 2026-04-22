@@ -48,8 +48,7 @@ impl<R: Read> StreamingProcessor<R> {
     /// Get total size of the underlying reader (if available)
     pub fn size_hint(&self) -> Option<u64> {
         // Try to get size from the reader if it supports seeking
-        use std::io::Seek;
-        
+                
         // This is a best-effort operation - return None if seeking is not supported
         None
     }

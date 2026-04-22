@@ -3,10 +3,9 @@
 // High-level interface for hardware-accelerated cryptographic operations
 //==============================================================================
 
-use std::sync::Arc;
 use std::time::Duration;
 
-use super::{HardwareBridge, HardwareError, HardwareResult, memory_map::*};
+use super::{HardwareBridge, HardwareResult, memory_map::*};
 
 pub struct HardwareAccelerator {
     bridge: HardwareBridge,

@@ -4,8 +4,7 @@
 
 use crate::blockchain::{Block, BlockchainError, BlockchainResult};
 use crate::kernel::NexKernel;
-use crate::transform::stage_chaos::ChaosEngine;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::SystemTime;
 
 /// Consensus engine trait
 pub trait ConsensusEngine: Send + Sync {
@@ -239,7 +238,7 @@ impl ConsensusEngine for QuantumProofOfWork {
 #[derive(Debug, Clone)]
 pub struct ProofOfStake {
     /// Minimum stake required
-    min_stake: u64,
+    pub min_stake: u64,
     /// Validator set
     validators: Vec<String>,
 }
@@ -263,6 +262,11 @@ impl ConsensusEngine for ProofOfStake {
     fn mine_block(&self, block: Block) -> BlockchainResult<Block> {
         // PoS doesn't mine in traditional sense
         // Select validator and create block
+        // Note: In a real implementation, you would select a validator based on stake
+        if self.validators.is_empty() {
+            return Err(BlockchainError::ConsensusError("No validators available".to_string()));
+        }
+        
         let mut mined_block = block;
         mined_block.header.nonce = 1; // Fixed nonce for PoS
         mined_block.header.calculate_hash()?;
@@ -271,8 +275,8 @@ impl ConsensusEngine for ProofOfStake {
 
     fn is_valid_proof(&self, block: &Block) -> BlockchainResult<bool> {
         // For PoS, we check if block was created by valid validator
-        // This is a simplified implementation
-        Ok(block.header.hash.is_some())
+        // This is a simplified implementation that checks minimum stake concept
+        Ok(block.header.hash.is_some() && self.min_stake > 0)
     }
 
     fn get_difficulty(&self) -> u32 {
@@ -289,7 +293,7 @@ impl ConsensusEngine for ProofOfStake {
 pub struct HybridConsensus {
     pow: ProofOfWork,
     pos: ProofOfStake,
-    pow_weight: f64, // Weight for PoW (0.0 to 1.0)
+    pub pow_weight: f64, // Weight for PoW (0.0 to 1.0)
 }
 
 impl HybridConsensus {
@@ -305,8 +309,14 @@ impl HybridConsensus {
 
 impl ConsensusEngine for HybridConsensus {
     fn mine_block(&self, block: Block) -> BlockchainResult<Block> {
-        // Use PoW for now (simplified hybrid)
-        self.pow.mine_block(block)
+        // Use consensus mechanism based on weight
+        if self.pow_weight > 0.5 {
+            // Use PoW for now (simplified hybrid)
+            self.pow.mine_block(block)
+        } else {
+            // Use PoS
+            self.pos.mine_block(block)
+        }
     }
 
     fn is_valid_proof(&self, block: &Block) -> BlockchainResult<bool> {
@@ -317,7 +327,9 @@ impl ConsensusEngine for HybridConsensus {
     }
 
     fn get_difficulty(&self) -> u32 {
-        self.pow.get_difficulty()
+        // Adjust difficulty based on weight
+        let base_difficulty = self.pow.get_difficulty();
+        (base_difficulty as f64 * self.pow_weight) as u32
     }
 
     fn adjust_difficulty(&mut self, last_block_time: u64, current_time: u64) -> BlockchainResult<u32> {

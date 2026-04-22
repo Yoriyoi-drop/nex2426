@@ -1,7 +1,11 @@
 use crate::utils::asm_ops;
 
-/// OPTIMIZED White-Box Network with dynamic table generation
-/// Replaces 53 static table files (420KB) with compact dynamic generation
+/// Control Flow Obfuscation with dynamic table generation
+/// 
+/// This implementation provides basic obfuscation through dynamic
+/// table generation and control flow randomization. It replaces
+/// static lookup tables with runtime-generated values to reduce
+/// binary size and increase analysis difficulty.
 pub struct NetworkEngine {
     pub state: [u32; 16],
     round_counter: u32,
@@ -15,10 +19,12 @@ impl NetworkEngine {
         }
     }
 
-    /// Executes 1024 rounds of dynamic whitebox operations
-    /// OPTIMIZED: No static tables, generates values on-the-fly
+    /// Executes configurable rounds of obfuscation operations
+    /// 
+/// Default: 32 rounds for balance between security and performance.
+/// Each round applies dynamic table lookups and state shuffling.
     pub fn execute(&mut self) {
-        for _ in 0..1024 {
+        for _ in 0..32 {
             self.round();
             self.round_counter = self.round_counter.wrapping_add(1);
         }
@@ -54,8 +60,11 @@ impl NetworkEngine {
         self.state.rotate_right(1);
     }
 
-    /// Dynamic table lookup replacing static T1-T4 tables
-    /// Generates cryptographically secure values on-the-fly
+    /// Dynamic table lookup for obfuscation
+    /// 
+/// Generates values using deterministic mixing functions.
+/// This provides basic obfuscation but is not cryptographically
+/// secure by itself - it's designed to increase analysis difficulty.
     #[inline(always)]
     fn dynamic_table_lookup(&self, input: u32, table_id: u32, position: usize) -> u32 {
         let base_seed = match table_id {

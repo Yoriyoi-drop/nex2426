@@ -100,6 +100,18 @@ impl From<serde_json::Error> for NexError {
     }
 }
 
+impl From<crate::security::memory::ProtectedError> for NexError {
+    fn from(err: crate::security::memory::ProtectedError) -> Self {
+        NexError::Crypto(err.to_string())
+    }
+}
+
+impl From<crate::standards::kdf::KdfError> for NexError {
+    fn from(err: crate::standards::kdf::KdfError) -> Self {
+        NexError::Crypto(err.to_string())
+    }
+}
+
 /// Result type alias for NEX2426 operations
 pub type NexResult<T> = Result<T, NexError>;
 

@@ -11,13 +11,9 @@ pub mod storage;
 pub mod crypto;
 
 // Re-export main components
-pub use block::{Block, BlockHeader, Transaction, TransactionType, EncryptedData};
-pub use chain::{Blockchain, ChainState};
-pub use consensus::{ProofOfWork, ConsensusEngine};
-pub use storage::{ChainStorage, MemoryStorage};
-pub use crypto::{BlockchainCrypto, MerkleTree};
+pub use block::{Block, Transaction, TransactionType};
+pub use chain::Blockchain;
 
-use crate::kernel::NexKernel;
 use serde::{Deserialize, Serialize};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -63,8 +59,13 @@ pub enum BlockchainError {
     #[error("Chain validation failed: {reason}")]
     ChainValidationFailed { reason: String },
     
+    /// Storage related errors
     #[error("Storage error: {0}")]
-    StorageError(String),
+    Storage(String),
+    
+    /// I/O related errors
+    #[error("I/O error: {0}")]
+    Io(#[from] std::io::Error),
     
     #[error("Consensus error: {0}")]
     ConsensusError(String),

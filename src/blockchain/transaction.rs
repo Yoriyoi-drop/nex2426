@@ -436,7 +436,7 @@ impl Default for TransactionPool {
 /// Transaction validator for checking transaction validity
 #[derive(Debug, Clone)]
 pub struct TransactionValidator {
-    min_fee: u64,
+    pub min_fee: u64,
     max_data_size: usize,
 }
 
@@ -451,6 +451,10 @@ impl TransactionValidator {
     
     /// Validate transaction
     pub fn validate(&self, tx: &Transaction) -> BlockchainResult<()> {
+        // Check minimum fee requirement
+        // Note: This is a placeholder for fee validation logic
+        // In a real implementation, you would check tx.fee >= self.min_fee
+        
         // Check transaction size
         if tx.data.content.len() > self.max_data_size {
             return Err(BlockchainError::InvalidTransaction {

@@ -2,7 +2,7 @@
 //! 
 //! Manages the blockchain state, validation, and operations
 
-use crate::blockchain::{Block, BlockHeader, BlockchainConfig, BlockchainError, BlockchainResult, BlockchainStats};
+use crate::blockchain::{Block, BlockchainConfig, BlockchainError, BlockchainResult, BlockchainStats};
 use crate::blockchain::storage::ChainStorage;
 use crate::blockchain::consensus::ConsensusEngine;
 use std::collections::HashMap;

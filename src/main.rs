@@ -14,6 +14,8 @@ mod protocol;
 mod security;
 mod blockchain;
 mod hardware;
+mod error;
+mod validation;
 
 use std::env;
 use std::io::{self, Write};
@@ -38,7 +40,7 @@ fn print_banner() {
     println!("██║╚██╗██║██╔══╝   ██╔██╗╚════╝██╔═══╝ ╚════██║██╔═══╝ ██╔═══██╗");
     println!("██║ ╚████║███████╗██╔╝ ██╗     ███████╗     ██║███████╗╚██████╔╝");
     println!("╚═╝  ╚═══╝╚══════╝╚═╝  ╚═╝     ╚══════╝     ╚═╝╚══════╝ ╚═════╝ ");
-    println!("      >>> QUANTUM-RESISTANT CHAOS ENCRYPTION ENGINE <<<{}\n", RESET);
+    println!("      >>> SECURE DATA STORAGE ENCRYPTION ENGINE <<<{}\n", RESET);
 }
 
 fn print_section(title: &str) {
@@ -57,7 +59,7 @@ fn print_help() {
     println!("██║╚██╗██║██╔══╝   ██╔██╗╚════╝██╔═══╝ ╚════██║██╔═══╝ ██╔═══██╗");
     println!("██║ ╚████║███████╗██╔╝ ██╗     ███████╗     ██║███████╗╚██████╔╝");
     println!("╚═╝  ╚═══╝╚══════╝╚═╝  ╚═╝     ╚══════╝     ╚═╝╚══════╝ ╚═════╝ ");
-    println!("      >>> QUANTUM-RESISTANT CHAOS ENCRYPTION ENGINE <<<{}\n", RESET);
+    println!("      >>> SECURE DATA STORAGE ENCRYPTION ENGINE <<<{}\n", RESET);
     
     println!("{}USAGE:\n", BOLD);
     println!("  {}nex2426 [OPTIONS] [INPUT] [KEY] [COST]\n", CYAN);

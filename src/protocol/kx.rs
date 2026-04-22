@@ -1,6 +1,6 @@
 use crate::quantum::lattice::LatticeEngine;
 use crate::security::memory::{Protected, Zeroize};
-use crate::error::{NexError, NexResult};
+use crate::error::NexResult;
 use crate::ensure;
 
 /// Post-Quantum Key Exchange Protocol (Simulation using Lattice Engine)
@@ -154,7 +154,7 @@ impl NexKeyExchange {
             }
         }
         
-        ensure!(!shared_secret.iter().all(|x| x == 0), protocol, "Computed shared secret cannot be all zeros");
+        ensure!(!shared_secret.iter().all(|x| *x == 0), protocol, "Computed shared secret cannot be all zeros");
         
         Ok(shared_secret)
     }

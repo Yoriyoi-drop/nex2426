@@ -3,7 +3,7 @@
 // Rust implementation of hardware bridge interface
 //==============================================================================
 
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
@@ -129,7 +129,7 @@ impl HardwareBridge {
     // Simulate hardware status updates (for testing without actual hardware)
     pub fn simulate_operation(&self, _mode: OperationMode, cycles: u32) {
         // Set status to busy (main status in bits 8-15)
-        self.registers.status.store((1 << 8), Ordering::SeqCst);
+        self.registers.status.store(1 << 8, Ordering::SeqCst);
         
         // Simulate operation delay
         thread::sleep(Duration::from_micros(cycles as u64 * 10));

@@ -1,5 +1,5 @@
 use crate::kernel::NexKernel;
-use crate::security::memory::{Protected, Zeroize};
+use crate::security::memory::Protected;
 use crate::validation::validate_key_material;
 use crate::error::NexResult;
 
@@ -34,13 +34,13 @@ impl HmacNex {
         })
     }
 
-    pub fn sign(&self, message: &[u8]) -> Vec<u8> {
+    pub fn sign(&self, message: &[u8]) -> NexResult<Vec<u8>> {
         // FIXED: Use dynamic block size based on NexKernel output
         let kernel_output_size = 64; // NexKernel produces 64 bytes (512 bits)
         let block_size = kernel_output_size;
         
         // 1. Process Key - adapted for stream-based NexKernel
-        let mut k_prime = self.protected_key.access().clone();
+        let mut k_prime = self.protected_key.access()?.clone();
         if k_prime.len() > block_size {
             // Use NexKernel to hash oversized keys
             k_prime = self.kernel.hash_bytes(&k_prime, "HMAC-Key-Reduction");
@@ -70,21 +70,22 @@ impl HmacNex {
         let mut outer_data = o_pad;
         outer_data.extend_from_slice(&inner_hash);
         let outer_hash = self.kernel.hash_bytes(&outer_data, "HMAC-Outer");
-
-        // Return the final HMAC tag (truncate to standard HMAC size if needed)
-        outer_hash
+        
+        Ok(outer_hash)
     }
 
     pub fn verify(&self, message: &[u8], tag: &[u8]) -> bool {
-        let computed = self.sign(message);
-        // Constant time comparison to prevent timing attacks
-        if computed.len() != tag.len() { return false; }
-        
-        let mut diff = 0;
-        for i in 0..computed.len() {
-            diff |= computed[i] ^ tag[i];
+        if let Ok(computed) = self.sign(message) {
+            // Constant time comparison to prevent timing attacks
+            if computed.len() != tag.len() { return false; }
+            
+            let mut diff = 0;
+            for i in 0..computed.len() {
+                diff |= computed[i] ^ tag[i];
+            }
+            diff == 0
+        } else {
+            false
         }
-        
-        diff == 0
     }
 }

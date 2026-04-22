@@ -9,7 +9,6 @@ pub mod memory_map;
 
 pub use bridge::HardwareBridge;
 pub use accelerator::HardwareAccelerator;
-pub use memory_map::*;
 
 #[derive(Debug, Clone, Copy)]
 pub enum HardwareError {

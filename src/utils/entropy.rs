@@ -1,7 +1,7 @@
 //! Cross-platform entropy source for cryptographic operations
 //! Provides secure random bytes on both Unix-like systems and Windows
 
-use rand::{RngCore, Rng, Error as RandError};
+use rand::{RngCore, Error as RandError};
 
 /// Cross-platform secure random number generator
 pub struct SecureRng {

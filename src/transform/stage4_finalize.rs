@@ -14,16 +14,24 @@ pub fn finalize_blocks(mut blocks: Vec<u64>) -> Vec<u64> {
         // Round constant
         let rc = 0x9375CA02113 ^ (round as u64);
         
-        let b = blocks.clone(); // Snapshot for mixing
+        // OPTIMIZED: Use individual values to avoid borrowing conflicts
+        let b0 = blocks[0];
+        let b1 = blocks[1];
+        let b2 = blocks[2];
+        let b3 = blocks[3];
+        let b4 = blocks[4];
+        let b5 = blocks[5];
+        let b6 = blocks[6];
+        let b7 = blocks[7];
 
-        blocks[0] = asm_ops::asm_scramble(b[0] ^ b[1] ^ rc);
-        blocks[1] = asm_ops::asm_scramble(b[1] ^ b[2]);
-        blocks[2] = asm_ops::asm_scramble(b[2] ^ b[3] ^ rc);
-        blocks[3] = asm_ops::asm_scramble(b[3] ^ b[4]);
-        blocks[4] = asm_ops::asm_scramble(b[4] ^ b[5] ^ rc);
-        blocks[5] = asm_ops::asm_scramble(b[5] ^ b[6]);
-        blocks[6] = asm_ops::asm_scramble(b[6] ^ b[7] ^ rc);
-        blocks[7] = asm_ops::asm_scramble(b[7] ^ b[0]); // Wrap
+        blocks[0] = asm_ops::asm_scramble(b0 ^ b1 ^ rc);
+        blocks[1] = asm_ops::asm_scramble(b1 ^ b2);
+        blocks[2] = asm_ops::asm_scramble(b2 ^ b3 ^ rc);
+        blocks[3] = asm_ops::asm_scramble(b3 ^ b4);
+        blocks[4] = asm_ops::asm_scramble(b4 ^ b5 ^ rc);
+        blocks[5] = asm_ops::asm_scramble(b5 ^ b6);
+        blocks[6] = asm_ops::asm_scramble(b6 ^ b7 ^ rc);
+        blocks[7] = asm_ops::asm_scramble(b7 ^ b0); // Wrap
     }
 
     blocks

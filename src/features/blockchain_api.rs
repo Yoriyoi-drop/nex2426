@@ -2,11 +2,11 @@
 //! 
 //! Provides REST API for blockchain operations and management
 
-use crate::blockchain::{Blockchain, BlockchainConfig, Block, Transaction, BlockchainStats};
+use crate::blockchain::{Blockchain, BlockchainConfig, Transaction};
+use crate::blockchain::consensus::{ProofOfWork, QuantumProofOfWork, ConsensusEngine};
 use crate::blockchain::storage::FileStorage;
-use crate::blockchain::consensus::{ProofOfWork, QuantumProofOfWork};
 use crate::blockchain::transaction::{TransactionBuilder, TransactionPool, EncryptionTransaction};
-use crate::blockchain::crypto::BlockchainCrypto;
+use crate::blockchain::block::EncryptedData;
 use crate::audit::blockchain_audit::{BlockchainAuditLogger, AuditConfig};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -65,7 +65,7 @@ impl BlockchainApiServer {
         let storage = Box::new(FileStorage::new(storage_path)?);
 
         // Create consensus engine
-        let consensus: Box<dyn crate::blockchain::ConsensusEngine> = if config.quantum_resistant {
+        let consensus: Box<dyn ConsensusEngine> = if config.quantum_resistant {
             Box::new(QuantumProofOfWork::new(config.difficulty, config.block_time_target, 1024))
         } else {
             Box::new(ProofOfWork::new(config.difficulty, config.block_time_target))
@@ -184,7 +184,7 @@ impl BlockchainApiServer {
                 encryption_tx.to_transaction(request.sender)?
             }
             "custom" => {
-                let data = crate::blockchain::EncryptedData {
+                let data = EncryptedData {
                     content: request.data,
                     key_ref: request.key_ref.unwrap_or_else(|| "custom".to_string()),
                     algorithm: request.algorithm.unwrap_or_else(|| "custom".to_string()),

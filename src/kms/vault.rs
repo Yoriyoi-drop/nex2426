@@ -39,7 +39,8 @@ impl KeyVault {
         }
         
         // Encrypt-then-MAC with Chaos Stream
-        let enc_blob = self.encrypt_entry(key_data, master_password);
+        let enc_blob = self.encrypt_entry(key_data, master_password)
+            .map_err(|_| VaultError { msg: "Encryption failed".to_string() })?;
         self.encrypted_keys.insert(id.to_string(), enc_blob);
         Ok(())
     }
@@ -105,12 +106,12 @@ impl KeyVault {
         let mut mac_input = nonce.clone();
         mac_input.extend_from_slice(&ciphertext);
         let hmac = HmacNex::new(&derived_hash).map_err(|_| ())?; // Use derived key for MAC too (or split it)
-        let tag = hmac.sign(&mac_input);
+        let tag = hmac.sign(&mac_input).map_err(|_| ())?;
         
         // Result
-        let mut result = nonce;
-        result.extend(ciphertext);
-        result.extend(tag);
+        let mut result = nonce.to_vec();
+        result.extend_from_slice(&ciphertext);
+        result.extend_from_slice(&tag);
         Ok(result)
     }
 
