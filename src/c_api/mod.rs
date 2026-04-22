@@ -16,6 +16,7 @@ pub struct NexKernel {
 
 /// Result structure for C API operations
 #[repr(C)]
+#[derive(Clone)]
 pub struct NexResult {
     /// Success status (0 = success, non-zero = error)
     pub status: c_int,
@@ -56,7 +57,7 @@ impl Default for NexConfig {
 /// # Returns
 /// Pointer to kernel instance, or null on error
 #[unsafe(no_mangle)]
-pub extern "C" fn nex_kernel_create(config: *const NexConfig) -> *mut NexKernel {
+pub unsafe extern "C" fn nex_kernel_create(config: *const NexConfig) -> *mut NexKernel {
     if config.is_null() {
         return ptr::null_mut();
     }
@@ -78,7 +79,7 @@ pub extern "C" fn nex_kernel_create(config: *const NexConfig) -> *mut NexKernel 
 /// # Arguments
 /// * `kernel` - Pointer to kernel instance
 #[unsafe(no_mangle)]
-pub extern "C" fn nex_kernel_destroy(kernel: *mut NexKernel) {
+pub unsafe extern "C" fn nex_kernel_destroy(kernel: *mut NexKernel) {
     if !kernel.is_null() {
         unsafe {
             let _ = Box::from_raw(kernel as *mut crate::kernel::NexKernel);
@@ -97,7 +98,7 @@ pub extern "C" fn nex_kernel_destroy(kernel: *mut NexKernel) {
 /// # Returns
 /// Result structure containing hash or error information
 #[unsafe(no_mangle)]
-pub extern "C" fn nex_hash_data(
+pub unsafe extern "C" fn nex_hash_data(
     kernel: *mut NexKernel,
     data: *const u8,
     data_len: usize,
@@ -107,7 +108,7 @@ pub extern "C" fn nex_hash_data(
         return NexResult {
             status: -1,
             hash: ptr::null_mut(),
-            error: unsafe { CString::new("Invalid parameters").unwrap().into_raw() },
+            error: CString::new("Invalid parameters").expect("Failed to create error string").into_raw(),
             timestamp: 0,
         };
     }
@@ -121,7 +122,7 @@ pub extern "C" fn nex_hash_data(
             return NexResult {
                 status: -2,
                 hash: ptr::null_mut(),
-                error: unsafe { CString::new("Invalid key encoding").unwrap().into_raw() },
+                error: CString::new("Invalid key encoding").expect("Failed to create error string").into_raw(),
                 timestamp: 0,
             };
         }
@@ -132,7 +133,7 @@ pub extern "C" fn nex_hash_data(
     
     NexResult {
         status: 0,
-        hash: unsafe { CString::new(result.full_formatted_string).unwrap().into_raw() },
+        hash: CString::new(result.full_formatted_string).expect("Failed to create hash string").into_raw(),
         error: ptr::null_mut(),
         timestamp: result.timestamp,
     }
@@ -148,7 +149,7 @@ pub extern "C" fn nex_hash_data(
 /// # Returns
 /// Result structure containing hash or error information
 #[unsafe(no_mangle)]
-pub extern "C" fn nex_hash_string(
+pub unsafe extern "C" fn nex_hash_string(
     kernel: *mut NexKernel,
     data: *const c_char,
     key: *const c_char,
@@ -157,7 +158,7 @@ pub extern "C" fn nex_hash_string(
         return NexResult {
             status: -1,
             hash: ptr::null_mut(),
-            error: unsafe { CString::new("Invalid parameters").unwrap().into_raw() },
+            error: CString::new("Invalid parameters").expect("Failed to create error string").into_raw(),
             timestamp: 0,
         };
     }
@@ -168,7 +169,7 @@ pub extern "C" fn nex_hash_string(
             return NexResult {
                 status: -2,
                 hash: ptr::null_mut(),
-                error: unsafe { CString::new("Invalid data encoding").unwrap().into_raw() },
+                error: CString::new("Invalid data encoding").expect("Failed to create error string").into_raw(),
                 timestamp: 0,
             };
         }
@@ -180,7 +181,7 @@ pub extern "C" fn nex_hash_string(
             return NexResult {
                 status: -2,
                 hash: ptr::null_mut(),
-                error: unsafe { CString::new("Invalid key encoding").unwrap().into_raw() },
+                error: CString::new("Invalid key encoding").expect("Failed to create error string").into_raw(),
                 timestamp: 0,
             };
         }
@@ -192,7 +193,7 @@ pub extern "C" fn nex_hash_string(
     
     NexResult {
         status: 0,
-        hash: unsafe { CString::new(result.full_formatted_string).unwrap().into_raw() },
+        hash: CString::new(result.full_formatted_string).expect("Failed to create hash string").into_raw(),
         error: ptr::null_mut(),
         timestamp: result.timestamp,
     }
@@ -203,7 +204,7 @@ pub extern "C" fn nex_hash_string(
 /// # Arguments
 /// * `result` - Pointer to result structure
 #[unsafe(no_mangle)]
-pub extern "C" fn nex_result_free(result: *mut NexResult) {
+pub unsafe extern "C" fn nex_result_free(result: *mut NexResult) {
     if result.is_null() {
         return;
     }
@@ -231,7 +232,7 @@ pub extern "C" fn nex_result_free(result: *mut NexResult) {
 /// Pointer to version string (null-terminated)
 #[unsafe(no_mangle)]
 pub extern "C" fn nex_get_version() -> *const c_char {
-    CString::new(env!("CARGO_PKG_VERSION")).unwrap().into_raw()
+    CString::new(env!("CARGO_PKG_VERSION")).expect("Failed to create version string").into_raw()
 }
 
 /// Get library build information
@@ -239,7 +240,7 @@ pub extern "C" fn nex_get_version() -> *const c_char {
 /// # Returns
 /// Pointer to build info string (null-terminated)
 #[unsafe(no_mangle)]
-pub extern "C" fn nex_get_build_info() -> *const c_char {
+pub unsafe extern "C" fn nex_get_build_info() -> *const c_char {
     let build_info = format!(
         "NEX2426 v{} (Rust {}-{}-{})",
         env!("CARGO_PKG_VERSION"),
@@ -247,7 +248,7 @@ pub extern "C" fn nex_get_build_info() -> *const c_char {
         std::env::var("CARGO_CFG_TARGET_ARCH").unwrap_or_default(),
         std::env::var("CARGO_CFG_TARGET_OS").unwrap_or_default()
     );
-    unsafe { CString::new(build_info).unwrap().into_raw() }
+    CString::new(build_info).expect("Failed to create build info string").into_raw()
 }
 
 /// Free string allocated by library
@@ -255,11 +256,9 @@ pub extern "C" fn nex_get_build_info() -> *const c_char {
 /// # Arguments
 /// * `string` - Pointer to string (null-terminated)
 #[unsafe(no_mangle)]
-pub extern "C" fn nex_free_string(string: *mut c_char) {
+pub unsafe extern "C" fn nex_free_string(string: *mut c_char) {
     if !string.is_null() {
-        unsafe {
-            let _ = CString::from_raw(string);
-        }
+        let _ = unsafe { CString::from_raw(string) };
     }
 }
 
@@ -304,56 +303,69 @@ mod tests {
     #[test]
     fn test_c_api_basic() {
         let config = NexConfig::default();
-        let kernel = nex_kernel_create(&config);
+        let kernel = unsafe { nex_kernel_create(&config) };
         assert!(!kernel.is_null());
         
-        let result = nex_hash_string(
-            kernel,
-            "test data\0".as_ptr() as *const c_char,
-            "test key\0".as_ptr() as *const c_char,
-        );
+        let result = unsafe {
+            nex_hash_string(
+                kernel,
+                "test data\0".as_ptr() as *const c_char,
+                "test key\0".as_ptr() as *const c_char,
+            )
+        };
         
         assert_eq!(result.status, 0);
         assert!(!result.hash.is_null());
         assert!(result.error.is_null());
         
-        nex_result_free(&mut result.clone() as *mut NexResult);
-        nex_kernel_destroy(kernel);
+        unsafe {
+            nex_result_free(&mut result.clone() as *mut NexResult);
+            nex_kernel_destroy(kernel);
+        }
     }
     
     #[test]
     fn test_c_api_data() {
         let config = NexConfig::default();
-        let kernel = nex_kernel_create(&config);
+        let kernel = unsafe { nex_kernel_create(&config) };
         assert!(!kernel.is_null());
         
         let test_data = b"test data";
-        let result = nex_hash_data(
-            kernel,
-            test_data.as_ptr(),
-            test_data.len(),
-            "test key\0".as_ptr() as *const c_char,
-        );
+        let result = unsafe {
+            nex_hash_data(
+                kernel,
+                test_data.as_ptr(),
+                test_data.len(),
+                "test key\0".as_ptr() as *const c_char,
+            )
+        };
         
         assert_eq!(result.status, 0);
         assert!(!result.hash.is_null());
+        assert!(result.error.is_null());
         
-        nex_result_free(&mut result.clone() as *mut NexResult);
-        nex_kernel_destroy(kernel);
+        unsafe {
+            nex_result_free(&mut result.clone() as *mut NexResult);
+            nex_kernel_destroy(kernel);
+        }
     }
     
     #[test]
-    fn test_c_api_error_handling() {
-        let result = nex_hash_string(
-            ptr::null_mut(),
-            "test data\0".as_ptr() as *const c_char,
-            "test key\0".as_ptr() as *const c_char,
-        );
+    fn test_c_api_error() {
+        let result = unsafe {
+            nex_hash_string(
+                ptr::null_mut(),
+                "test data\0".as_ptr() as *const c_char,
+                "test key\0".as_ptr() as *const c_char,
+            )
+        };
         
-        assert_ne!(result.status, 0);
+        assert_eq!(result.status, -1);
         assert!(result.hash.is_null());
         assert!(!result.error.is_null());
         
-        nex_result_free(&mut result.clone() as *mut NexResult);
+        unsafe {
+            nex_result_free(&mut result.clone() as *mut NexResult);
+        }
     }
 }

@@ -19,14 +19,18 @@ pub fn get_hardware_id() -> u64 {
 /// Safe wrapper for AVX2 mixing (Rust fallback)
 /// ptr: mutable slice of 4 u64s
 /// mask: slice of 4 u64s
+/// Returns false if inputs are invalid
 #[inline(always)]
-pub fn asm_mix_avx2(ptr: &mut [u64], mask: &[u64]) {
-    assert!(ptr.len() >= 4 && mask.len() >= 4);
+pub fn asm_mix_avx2(ptr: &mut [u64], mask: &[u64]) -> bool {
+    if ptr.len() < 4 || mask.len() < 4 {
+        return false;
+    }
     
     // Rust fallback implementation
     for i in 0..4 {
         ptr[i] = asm_mix(ptr[i], mask[i]);
     }
+    true
 }
 
 /// Mixes two 64-bit integers using Rust implementation.

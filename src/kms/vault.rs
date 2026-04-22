@@ -9,6 +9,7 @@ use crate::security::memory::Protected;
 pub struct KeyVault {
     master_key_hash: Vec<u8>,
     encrypted_keys: HashMap<String, Vec<u8>>,
+    #[allow(dead_code)]
     kernel: NexKernel,
 }
 
@@ -66,7 +67,7 @@ impl KeyVault {
     }
     
     /// Format: [Nonce(32) | Ciphertext(...) | HMAC(64)]
-    fn encrypt_entry(&self, plaintext: &[u8], master_password: &str) -> Vec<u8> {
+    fn encrypt_entry(&self, plaintext: &[u8], master_password: &str) -> Result<Vec<u8>, ()> {
         // 1. Generate Nonce
         // Minimal approach: use time + random-like counter or just a derived nonce
         // For real security, we need true randomness.
@@ -87,10 +88,10 @@ impl KeyVault {
         let derived_hash = kernel.hash_bytes(&kdf_input, "Vault-Entry-Key");
         
         let seed = [
-            u64::from_le_bytes(derived_hash[0..8].try_into().unwrap()),
-            u64::from_le_bytes(derived_hash[8..16].try_into().unwrap()),
-            u64::from_le_bytes(derived_hash[16..24].try_into().unwrap()),
-            u64::from_le_bytes(derived_hash[24..32].try_into().unwrap()),
+            u64::from_le_bytes(derived_hash[0..8].try_into().unwrap_or([0u8; 8])),
+            u64::from_le_bytes(derived_hash[8..16].try_into().unwrap_or([0u8; 8])),
+            u64::from_le_bytes(derived_hash[16..24].try_into().unwrap_or([0u8; 8])),
+            u64::from_le_bytes(derived_hash[24..32].try_into().unwrap_or([0u8; 8])),
         ];
         
         // 3. Encrypt
@@ -103,14 +104,14 @@ impl KeyVault {
         // 4. Compute MAC
         let mut mac_input = nonce.clone();
         mac_input.extend_from_slice(&ciphertext);
-        let hmac = HmacNex::new(&derived_hash); // Use derived key for MAC too (or split it)
+        let hmac = HmacNex::new(&derived_hash).map_err(|_| ())?; // Use derived key for MAC too (or split it)
         let tag = hmac.sign(&mac_input);
         
         // Result
         let mut result = nonce;
         result.extend(ciphertext);
         result.extend(tag);
-        result
+        Ok(result)
     }
 
     fn decrypt_entry(&self, blob: &[u8], master_password: &str) -> Result<Vec<u8>, ()> {
@@ -133,17 +134,17 @@ impl KeyVault {
         // Verify MAC
         let mut mac_input = nonce.to_vec();
         mac_input.extend_from_slice(ciphertext);
-        let hmac = HmacNex::new(&derived_hash);
+        let hmac = HmacNex::new(&derived_hash).map_err(|_| ())?;
         if !hmac.verify(&mac_input, tag) {
             return Err(());
         }
         
         // Decrypt
         let seed = [
-            u64::from_le_bytes(derived_hash[0..8].try_into().unwrap()),
-            u64::from_le_bytes(derived_hash[8..16].try_into().unwrap()),
-            u64::from_le_bytes(derived_hash[16..24].try_into().unwrap()),
-            u64::from_le_bytes(derived_hash[24..32].try_into().unwrap()),
+            u64::from_le_bytes(derived_hash[0..8].try_into().unwrap_or([0u8; 8])),
+            u64::from_le_bytes(derived_hash[8..16].try_into().unwrap_or([0u8; 8])),
+            u64::from_le_bytes(derived_hash[16..24].try_into().unwrap_or([0u8; 8])),
+            u64::from_le_bytes(derived_hash[24..32].try_into().unwrap_or([0u8; 8])),
         ];
         let mut cipher = ChaosEngine::new(seed);
         let mut plaintext = ciphertext.to_vec();
@@ -161,6 +162,7 @@ pub enum HsmError {
     GenericError,
 }
 pub struct HsmSimulator {
+    #[allow(dead_code)]
     state: [u32; 1024],
 }
 impl HsmSimulator {

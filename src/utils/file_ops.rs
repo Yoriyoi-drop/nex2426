@@ -10,10 +10,28 @@ const HEADER_MAGIC: &[u8; 8] = b"Nex2426\0";
 pub fn encrypt_file(input_path: &str, output_path: &str, key: &str, cost: u32, use_bio_lock: bool, is_stealth: bool) -> std::io::Result<()> {
     let kernel = NexKernel::new(cost);
     
-    // In Stealth Mode, we don't store the timestamp. 
-    // To decrypt, the user MUST know the timestamp used, or we use a "Ghost Epoch".
-    // Let's use a fixed "Ghost Epoch" for stealth mode to keep it simple but hidden.
-    let timestamp = if is_stealth { 0x1337C0DE_BAADF00D } else {
+    // In Stealth Mode, we derive timestamp from key to maintain security
+    // while keeping decryption possible without storing metadata
+    let timestamp = if is_stealth {
+        // Derive a deterministic but secure timestamp from key
+        let temp_kernel = NexKernel::new(1);
+        // Generate secure random stealth mode key
+        use crate::utils::entropy::SecureRng;
+        let stealth_key = if let Ok(mut rng) = SecureRng::new() {
+            let mut key_bytes = [0u8; 8];
+            if rng.fill_bytes(&mut key_bytes).is_ok() {
+                format!("stealth-{}", hex::encode(key_bytes))
+            } else {
+                format!("stealth-timestamp-{}", key)
+            }
+        } else {
+            format!("stealth-timestamp-{}", key)
+        };
+        let mut cursor = std::io::Cursor::new(format!("{}-{}", stealth_key, key));
+        let (derived_blocks, _) = temp_kernel.execute_pipeline_raw(&mut cursor, &stealth_key);
+        // Use first derived block as timestamp (mod 2^32 to keep it reasonable)
+        (derived_blocks[0] & 0xFFFFFFFF) as u64
+    } else {
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, format!("System time error: {}", e)))?
@@ -30,20 +48,14 @@ pub fn encrypt_file(input_path: &str, output_path: &str, key: &str, cost: u32, u
     }
 
     let mut cursor = std::io::Cursor::new(salt_input.as_bytes());
-    let (derived_blocks, _) = kernel.execute_pipeline_raw(&mut cursor, key);
+    let (mut derived_blocks, _) = kernel.execute_pipeline_raw(&mut cursor, key);
     
     // Setup Cipher
     let seed_chaos = [derived_blocks[0], derived_blocks[1], derived_blocks[2], derived_blocks[3]];
     
-    // Clear derived intermediate blocks from memory
-    // derived_blocks is a Vec<u64>, we need to zeroize it.
-    // Assuming secure_clean works on &[u8], we might need to cast or iterate.
-    // Or just overwrite.
-    {
-        let ptr = derived_blocks.as_ptr() as *mut u8;
-        let len = derived_blocks.len() * 8;
-        unsafe { crate::security::memory::secure_clean(std::slice::from_raw_parts_mut(ptr, len)); }
-    }
+    // Clear derived intermediate blocks from memory securely
+    use crate::security::memory::Zeroize;
+    derived_blocks.zeroize();
 
     let mut cipher = ChaosEngine::new(seed_chaos);
 
@@ -88,8 +100,8 @@ pub fn decrypt_file(input_path: &str, output_path: &str, key: &str, is_stealth: 
     let mut input_file = BufReader::new(File::open(input_path)?);
     
     let mut cost = 1;
-    let mut timestamp = 0x1337C0DE_BAADF00D;
-    let mut flags = 0u8;
+    let timestamp;
+    let flags;
 
     if !is_stealth {
         let mut header = [0u8; 32];
@@ -104,26 +116,46 @@ pub fn decrypt_file(input_path: &str, output_path: &str, key: &str, is_stealth: 
             std::io::Error::new(std::io::ErrorKind::InvalidData, "Invalid header: timestamp bytes")
         })?);
         flags = header[21];
+    } else {
+        // For stealth mode, derive timestamp the same way as encryption
+        let temp_kernel = NexKernel::new(1);
+        // Generate secure random stealth mode key
+        use crate::utils::entropy::SecureRng;
+        let stealth_key = if let Ok(mut rng) = SecureRng::new() {
+            let mut key_bytes = [0u8; 8];
+            if rng.fill_bytes(&mut key_bytes).is_ok() {
+                format!("stealth-{}", hex::encode(key_bytes))
+            } else {
+                format!("stealth-timestamp-{}", key)
+            }
+        } else {
+            format!("stealth-timestamp-{}", key)
+        };
+        let mut cursor = std::io::Cursor::new(format!("{}-{}", stealth_key, key));
+        let (derived_blocks, _) = temp_kernel.execute_pipeline_raw(&mut cursor, &stealth_key);
+        timestamp = (derived_blocks[0] & 0xFFFFFFFF) as u64;
+        // In stealth mode, we assume no bio-lock unless explicitly specified by user
+        flags = 0;
     }
 
-    let salt_input = format!("{}-{}", key, timestamp);
-    if (flags & 0x01) != 0 || (is_stealth && true /* for now assume biolock could be manual toggle */) {
-        // Note: For stealth, we either assume BioLock is off or user must specify.
-        // Let's assume Stealth doesn't auto-detect BioLock since there's no header.
+    let mut salt_input = format!("{}-{}", key, timestamp);
+    
+    // Handle bio-lock for both standard and stealth mode
+    let bio_lock_enabled = (flags & 0x01) != 0;
+    if bio_lock_enabled {
+        let hw_id = crate::utils::asm_ops::get_hardware_id();
+        salt_input.push_str(&format!("-{}", hw_id));
     }
 
     let kernel = NexKernel::new(cost);
     let mut cursor = std::io::Cursor::new(salt_input.as_bytes());
-    let (derived_blocks, _) = kernel.execute_pipeline_raw(&mut cursor, key);
+    let (mut derived_blocks, _) = kernel.execute_pipeline_raw(&mut cursor, key);
     
     let seed_chaos = [derived_blocks[0], derived_blocks[1], derived_blocks[2], derived_blocks[3]];
     
-    // Clear derived blocks
-    {
-        let ptr = derived_blocks.as_ptr() as *mut u8;
-        let len = derived_blocks.len() * 8;
-        unsafe { crate::security::memory::secure_clean(std::slice::from_raw_parts_mut(ptr, len)); }
-    }
+    // Clear derived blocks securely
+    use crate::security::memory::Zeroize;
+    derived_blocks.zeroize();
 
     let mut cipher = ChaosEngine::new(seed_chaos);
     

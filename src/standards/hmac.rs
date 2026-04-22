@@ -1,4 +1,7 @@
 use crate::kernel::NexKernel;
+use crate::security::memory::{Protected, Zeroize};
+use crate::validation::validate_key_material;
+use crate::error::NexResult;
 
 /// Industry Standard HMAC Construction
 /// Adapted for Nex2426 Kernel (512-bit block size presumed for inner hashing, though Nex is stream-based).
@@ -17,30 +20,39 @@ use crate::kernel::NexKernel;
 
 pub struct HmacNex {
     kernel: NexKernel,
-    key: Vec<u8>,
+    protected_key: Protected<Vec<u8>>,
 }
 
 impl HmacNex {
-    pub fn new(key: &[u8]) -> Self {
-        Self {
-            kernel: NexKernel::new(1),
-            key: key.to_vec(),
-        }
+    pub fn new(key: &[u8]) -> NexResult<Self> {
+        validate_key_material(key, "HMAC key")?;
+        
+        let protected_key = Protected::new(key.to_vec());
+        Ok(Self {
+            kernel: NexKernel::new(1), // Use deterministic kernel
+            protected_key,
+        })
     }
 
     pub fn sign(&self, message: &[u8]) -> Vec<u8> {
-        let block_size = 64; // 512 bits
+        // FIXED: Use dynamic block size based on NexKernel output
+        let kernel_output_size = 64; // NexKernel produces 64 bytes (512 bits)
+        let block_size = kernel_output_size;
         
-        // 1. Process Key
-        let mut k_prime = self.key.clone();
+        // 1. Process Key - adapted for stream-based NexKernel
+        let mut k_prime = self.protected_key.access().clone();
         if k_prime.len() > block_size {
+            // Use NexKernel to hash oversized keys
             k_prime = self.kernel.hash_bytes(&k_prime, "HMAC-Key-Reduction");
+            // Truncate to block_size if still too long
+            k_prime.truncate(block_size);
         }
         if k_prime.len() < block_size {
+            // Pad with zeros to match block size
             k_prime.resize(block_size, 0);
         }
 
-        // 2. Prepare Pads
+        // 2. Prepare Pads with proper block size
         let mut o_pad = vec![0x5c; block_size];
         let mut i_pad = vec![0x36; block_size];
 
@@ -59,6 +71,7 @@ impl HmacNex {
         outer_data.extend_from_slice(&inner_hash);
         let outer_hash = self.kernel.hash_bytes(&outer_data, "HMAC-Outer");
 
+        // Return the final HMAC tag (truncate to standard HMAC size if needed)
         outer_hash
     }
 

@@ -5,6 +5,7 @@
 //! user-friendly for various use cases.
 
 pub mod api_server;
+pub mod blockchain_api;
 pub mod config;
 pub mod logging;
 pub mod utils;

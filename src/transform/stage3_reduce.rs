@@ -10,8 +10,9 @@ pub fn reduce_blocks(mut blocks: Vec<u64>) -> Vec<u64> {
         
         // Special case adjustment for 9 blocks -> 8 logic
         if current_len == 9 {
-             let last = blocks.pop().unwrap(); 
-             blocks[0] = asm_ops::asm_scramble(blocks[0] ^ last);
+             if let Some(last) = blocks.pop() {
+                 blocks[0] = asm_ops::asm_scramble(blocks[0] ^ last);
+             }
              break;
         }
 

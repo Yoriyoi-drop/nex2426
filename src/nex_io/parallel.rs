@@ -44,7 +44,7 @@ impl ParallelStreamCipher {
                 loop {
                     // Claim a block index
                     let block_idx = {
-                        let mut num = ctr_manager.lock().unwrap();
+                        let mut num = ctr_manager.lock().expect("Counter manager lock poisoned");
                         let this_val = *num;
                         *num += 1;
                         this_val

@@ -5,7 +5,7 @@ use crate::standards::hmac::HmacNex;
 
 pub fn derivate_key(password: &[u8], salt: &[u8], iterations: u32, length: usize) -> Vec<u8> {
     let mut derived_key = Vec::with_capacity(length);
-    let hmac = HmacNex::new(password);
+    let hmac = HmacNex::new(password).unwrap_or_else(|_| panic!("Failed to create HMAC"));
     let chunks = (length as f64 / 64.0).ceil() as u32;
 
     for i in 1..=chunks {

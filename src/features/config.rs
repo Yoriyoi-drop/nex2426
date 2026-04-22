@@ -6,6 +6,21 @@
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::Path;
+use thiserror::Error;
+
+#[derive(Debug, Error)]
+pub enum ConfigError {
+    #[error("IO error: {0}")]
+    Io(#[from] std::io::Error),
+    #[error("Serialization error: {0}")]
+    Serialization(String),
+    #[error("Unsupported file format: {0}")]
+    UnsupportedFormat(String),
+    #[error("Validation error: {0}")]
+    Validation(String),
+    #[error("File not found: {0}")]
+    FileNotFound(String),
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NexConfig {
@@ -101,38 +116,49 @@ impl Default for NexConfig {
 
 impl NexConfig {
     /// Load configuration from file
-    pub fn load_from_file<P: AsRef<Path>>(path: P) -> Result<Self, Box<dyn std::error::Error>> {
+    pub fn load_from_file<P: AsRef<Path>>(path: P) -> Result<Self, ConfigError> {
         let path_ref = path.as_ref();
+        
+        if !path_ref.exists() {
+            return Err(ConfigError::FileNotFound(path_ref.to_string_lossy().to_string()));
+        }
+        
         let content = fs::read_to_string(path_ref)?;
         
         // Try to detect format based on file extension
         let config = if let Some(ext) = path_ref.extension() {
-            match ext.to_str().unwrap() {
-                "json" => serde_json::from_str(&content)?,
-                "toml" => toml::from_str(&content)?,
-                "yaml" | "yml" => serde_yaml::from_str(&content)?,
-                _ => return Err("Unsupported configuration file format".into()),
+            match ext.to_str().unwrap_or("json") {
+                "json" => serde_json::from_str(&content)
+                    .map_err(|e| ConfigError::Serialization(format!("JSON: {}", e)))?,
+                "toml" => toml::from_str(&content)
+                    .map_err(|e| ConfigError::Serialization(format!("TOML: {}", e)))?,
+                "yaml" | "yml" => serde_yaml::from_str(&content)
+                    .map_err(|e| ConfigError::Serialization(format!("YAML: {}", e)))?,
+                ext => return Err(ConfigError::UnsupportedFormat(ext.to_string())),
             }
         } else {
-            return Err("Cannot determine configuration file format".into());
+            return Err(ConfigError::UnsupportedFormat("unknown".to_string()));
         };
         
         Ok(config)
     }
     
     /// Save configuration to file
-    pub fn save_to_file<P: AsRef<Path>>(&self, path: P) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn save_to_file<P: AsRef<Path>>(&self, path: P) -> Result<(), ConfigError> {
         let path_ref = path.as_ref();
         
         let content = if let Some(ext) = path_ref.extension() {
-            match ext.to_str().unwrap() {
-                "json" => serde_json::to_string_pretty(self)?,
-                "toml" => toml::to_string_pretty(self)?,
-                "yaml" | "yml" => serde_yaml::to_string(self)?,
-                _ => return Err("Unsupported configuration file format".into()),
+            match ext.to_str().unwrap_or("json") {
+                "json" => serde_json::to_string_pretty(self)
+                    .map_err(|e| ConfigError::Serialization(format!("JSON: {}", e)))?,
+                "toml" => toml::to_string_pretty(self)
+                    .map_err(|e| ConfigError::Serialization(format!("TOML: {}", e)))?,
+                "yaml" | "yml" => serde_yaml::to_string(self)
+                    .map_err(|e| ConfigError::Serialization(format!("YAML: {}", e)))?,
+                ext => return Err(ConfigError::UnsupportedFormat(ext.to_string())),
             }
         } else {
-            return Err("Cannot determine configuration file format".into());
+            return Err(ConfigError::UnsupportedFormat("unknown".to_string()));
         };
         
         fs::write(path, content)?;
@@ -172,20 +198,24 @@ impl NexConfig {
     }
     
     /// Validate configuration
-    pub fn validate(&self) -> Result<(), String> {
+    pub fn validate(&self) -> Result<(), ConfigError> {
         if self.default_cost == 0 || self.default_cost > self.security.max_cost {
-            return Err(format!(
+            return Err(ConfigError::Validation(format!(
                 "Default cost must be between 1 and {}", 
                 self.security.max_cost
-            ));
+            )));
         }
         
         if self.performance.worker_threads > 64 {
-            return Err("Worker threads should not exceed 64".to_string());
+            return Err(ConfigError::Validation(
+                "Worker threads should not exceed 64".to_string()
+            ));
         }
         
         if self.performance.cache_size == 0 {
-            return Err("Cache size must be greater than 0".to_string());
+            return Err(ConfigError::Validation(
+                "Cache size must be greater than 0".to_string()
+            ));
         }
         
         Ok(())
@@ -232,28 +262,31 @@ mod tests {
     #[test]
     fn test_json_config() {
         let config = NexConfig::default();
-        let dir = tempdir().unwrap();
+        let dir = tempdir().expect("Failed to create temp directory");
         let file_path = dir.path().join("config.json");
         
         // Save config
-        config.save_to_file(&file_path).unwrap();
+        config.save_to_file(&file_path).expect("Failed to save config");
         
         // Load config
-        let loaded_config = NexConfig::load_from_file(&file_path).unwrap();
+        let loaded_config = NexConfig::load_from_file(&file_path).expect("Failed to load config");
         assert_eq!(config.default_cost, loaded_config.default_cost);
     }
     
     #[test]
     fn test_env_override() {
-        std::env::set_var("NEX_COST", "5");
-        std::env::set_var("NEX_TEMPORAL", "true");
+        unsafe {
+            std::env::set_var("NEX_COST", "5");
+            std::env::set_var("NEX_TEMPORAL", "true");
+        }
         
         let config = NexConfig::load_from_env();
         assert_eq!(config.default_cost, 5);
-        assert!(config.temporal_binding);
+        assert_eq!(config.temporal_binding, true);
         
-        // Clean up
-        std::env::remove_var("NEX_COST");
-        std::env::remove_var("NEX_TEMPORAL");
+        unsafe {
+            std::env::remove_var("NEX_COST");
+            std::env::remove_var("NEX_TEMPORAL");
+        }
     }
 }

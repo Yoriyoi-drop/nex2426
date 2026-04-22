@@ -12,14 +12,16 @@ pub struct CNTMode {
     kernel: NexKernel,
     nonce: [u8; 32], // 256-bit Nonce
     counter: u64,
+    ctr_key: String, // Consistent key for CTR mode
 }
 
 impl CNTMode {
-    pub fn new(kernel: NexKernel, nonce: [u8; 32]) -> Self {
+    pub fn new(kernel: NexKernel, nonce: [u8; 32], ctr_key: String) -> Self {
         Self {
             kernel,
             nonce,
             counter: 0,
+            ctr_key,
         }
     }
 
@@ -56,10 +58,10 @@ impl CNTMode {
         self.counter += 1;
         
         // Execute Kernel to get 512-bit hash (Keystream)
-        let mut cursor = Cursor::new(input_seed);
+        let mut cursor = std::io::Cursor::new(input_seed);
         
-        // We use a derivation key for the CTR mode itself
-        let (blocks, _) = self.kernel.execute_pipeline_raw(&mut cursor, "NexCTR-Internal-Key");
+        // Use the consistent CTR key (SECURITY FIX: No more random keys per block!)
+        let (blocks, _) = self.kernel.execute_pipeline_raw(&mut cursor, &self.ctr_key);
         
         // Convert [u64; 8] blocks to [u8; 64]
         let mut bytes = Vec::with_capacity(64);

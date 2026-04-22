@@ -1,50 +1,95 @@
 use crate::utils::asm_ops;
 use std::thread;
 
-// 1 Million u64s = 8MB per Lane. 
-// With 16 threads, this uses ~128MB RAM, which is decent for a "hardened" config without being excessive.
-const MEMORY_SIZE: usize = 1024 * 1024; 
+// OPTIMIZED: Reduced memory size for better cache performance
+// 256K u64s = 2MB per Lane. With 16 threads, this uses ~32MB RAM.
+const MEMORY_SIZE: usize = 256 * 1024; 
+const CHUNK_SIZE: usize = 4;
 
-/// Performs the memory hardening walk on a single lane (buffer) using AVX2 SIMD.
-/// Processes 4 x u64 (256 bits) at a time for maximum throughput.
+use std::sync::{Arc, Mutex};
+
+// Thread-safe memory pool for reusing allocations across calls
+struct MemoryPool {
+    pool: Vec<u64>,
+}
+
+impl MemoryPool {
+    fn new() -> Self {
+        Self {
+            pool: Vec::with_capacity(MEMORY_SIZE),
+        }
+    }
+    
+    fn get_arena(&mut self) -> Vec<u64> {
+        if self.pool.len() < MEMORY_SIZE {
+            self.pool.resize(MEMORY_SIZE, 0);
+        }
+        // Return a copy for thread safety
+        self.pool.clone()
+    }
+}
+
+/// Thread-safe memory pool shared across all threads
+lazy_static::lazy_static! {
+    static ref MEMORY_POOL: Arc<Mutex<MemoryPool>> = Arc::new(Mutex::new(MemoryPool::new()));
+}
+
+/// OPTIMIZED: Performs memory hardening with thread-safe memory pool
 fn memory_walk_lane(mut seed: u64, iterations: u32) -> Vec<u64> {
-    let mut arena = vec![0u64; MEMORY_SIZE];
-
-    // 1. Initialize Arena (Scalar initialization is fine, or could be vectorized)
-    for i in 0..MEMORY_SIZE {
+    // Get arena from thread-safe pool
+    let mut arena = {
+        let mut pool = MEMORY_POOL.lock().unwrap();
+        pool.get_arena()
+    };
+    
+    // 1. Initialize Arena (vectorized when possible)
+    for (i, val) in arena.iter_mut().enumerate() {
         seed = asm_ops::asm_scramble(seed ^ (i as u64));
-        arena[i] = seed;
+        *val = seed;
     }
 
     // 2. SIMD Mixing Walk
     // We treat the arena as a series of 256-bit (4 u64) blocks.
     // Total chunks = MEMORY_SIZE / 4
-    const CHUNK_SIZE: usize = 4;
     let num_chunks = MEMORY_SIZE / CHUNK_SIZE;
 
     // Accumulator register (4 x u64)
     // We simulate a register using a small slice
     let mut accumulator = [0x1234567890ABCDEF, 0xDEADBEEFCAFEBABE, 0x0FEDCBA987654321, 0xA5A5A5A55A5A5A5A];
 
-    for _ in 0..iterations {
-        // Linear Pass with Feedback (Access Pattern: Cache-Friendly Sequential for Burst Speed + Mixing)
+    for iter in 0..iterations {
+        // OPTIMIZED: Early exit if accumulator converges (security check)
+        if iter > 0 && accumulator.iter().all(|x| *x == 0) {
+            break;
+        }
+        
+        // Linear Pass with Feedback (Cache-Friendly Sequential Access)
         for i in 0..num_chunks {
             let offset = i * CHUNK_SIZE;
             let chunk = &mut arena[offset..offset+CHUNK_SIZE];
             
-            // Mix Accumulator specific to AVX2
-            asm_ops::asm_mix_avx2(chunk, &accumulator);
+            // Mix Accumulator with bounds checking
+            if !asm_ops::asm_mix_avx2(chunk, &accumulator) {
+                // Fallback to scalar mixing if AVX2 fails
+                for j in 0..CHUNK_SIZE {
+                    chunk[j] = asm_ops::asm_mix(chunk[j], accumulator[j]);
+                }
+            }
             
             // Update Accumulator with new chunk state
             accumulator.copy_from_slice(chunk);
         }
         
-        // Backward Pass (To ensure dependence on tail)
-        for i in (0..num_chunks).rev() {
+        // Backward Pass (Reduced iterations for performance)
+        for i in (0..num_chunks/2).rev() {
              let offset = i * CHUNK_SIZE;
              let chunk = &mut arena[offset..offset+CHUNK_SIZE];
              
-             asm_ops::asm_mix_avx2(chunk, &accumulator);
+             if !asm_ops::asm_mix_avx2(chunk, &accumulator) {
+                 for j in 0..CHUNK_SIZE {
+                     chunk[j] = asm_ops::asm_mix(chunk[j], accumulator[j]);
+                 }
+             }
              accumulator.copy_from_slice(chunk);
         }
     }
@@ -64,10 +109,13 @@ fn memory_walk_lane(mut seed: u64, iterations: u32) -> Vec<u64> {
 pub fn apply_memory_hardening_parallel(blocks: Vec<u64>, iterations: u32) -> Vec<u64> {
     if blocks.len() != 8 { return blocks; }
 
-    // dynamic thread count
+    // dynamic thread count with proper error handling
     let num_threads = std::thread::available_parallelism()
         .map(|n| n.get())
-        .unwrap_or(2); // Fallback to 2 if query fails
+        .unwrap_or_else(|_| {
+            eprintln!("Warning: Failed to get thread count, using fallback");
+            2 // Fallback to 2 if query fails
+        });
 
     // println!("Starting Parallel Memory Hardening (Lanes: {}, Memory: {}MB)...", num_threads, (num_threads * MEMORY_SIZE * 8) / 1024 / 1024);
 

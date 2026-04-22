@@ -117,7 +117,7 @@ impl NexLogger {
         let entry = LogEntry {
             timestamp: SystemTime::now()
                 .duration_since(UNIX_EPOCH)
-                .unwrap()
+                .unwrap_or_else(|_| std::time::Duration::from_secs(0))
                 .as_secs(),
             level: format!("{:?}", level),
             message: message.to_string(),
@@ -183,7 +183,7 @@ impl NexLogger {
     
     /// Get current metrics
     pub fn get_metrics(&self) -> LogMetrics {
-        let metrics = self.metrics.lock().unwrap();
+        let metrics = self.metrics.lock().expect("Logger metrics lock poisoned");
         LogMetrics {
             total_entries: metrics.total_entries,
             entries_by_level: metrics.entries_by_level.clone(),
@@ -254,7 +254,7 @@ impl NexLogger {
     
     /// Update metrics
     fn update_metrics(&self, entry: &LogEntry) {
-        let mut metrics = self.metrics.lock().unwrap();
+        let mut metrics = self.metrics.lock().expect("Logger metrics lock poisoned");
         
         metrics.total_entries += 1;
         
@@ -270,7 +270,7 @@ impl NexLogger {
         if let (Some(operation), Some(duration)) = (&entry.operation, entry.duration_ms) {
             metrics.performance_metrics
                 .entry(operation.clone())
-                .or_insert_with(Vec::new)
+                .or_default()
                 .push(duration);
         }
     }
@@ -361,8 +361,7 @@ macro_rules! log_error {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::tempdir;
-    
+        
     #[test]
     fn test_logger_creation() {
         let config = LoggerConfig::default();
@@ -393,7 +392,7 @@ mod tests {
             ..Default::default()
         };
         
-        let logger = NexLogger::new(config).unwrap();
+        let logger = NexLogger::new(config).expect("Failed to create logger");
         
         // Should log warn and error
         assert!(logger.should_log(&LogLevel::Warn));
@@ -408,7 +407,7 @@ mod tests {
     #[test]
     fn test_metrics_update() {
         let config = LoggerConfig::default();
-        let logger = NexLogger::new(config).unwrap();
+        let logger = NexLogger::new(config).expect("Failed to create logger");
         
         let mut metadata = HashMap::new();
         metadata.insert("operation".to_string(), "test_op".to_string());

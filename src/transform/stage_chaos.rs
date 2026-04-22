@@ -51,21 +51,25 @@ impl ChaosEngine {
         // We use a helper macro or closures for fixed point mul/div could be cleaner, 
         // but explicit is fine for performance.
         
+        // FIXED: Use wrapping arithmetic to prevent overflow and optimize divisions
         // dx = 10 * (y - x) / 100 => (y - x) / 10
-        let dx = (self.y - self.x) / 10;
+        let dx = (self.y.wrapping_sub(self.x)) / 10;
         
         // dy = (x * (rho - z) - y) * dt
-        // Need to be careful with multiplication scale. 
-        // x * rho -> (SCALE * SCALE). Need to divide by SCALE to get back to fixed point.
-        let rho_minus_z = self.rho - self.z;
-        let x_term = (self.x.wrapping_mul(rho_minus_z)) / SCALE;
-        let dy = (x_term - self.y) / 100;
+        // OPTIMIZED: Use pre-computed constants and wrapping operations
+        let rho_minus_z = self.rho.wrapping_sub(self.z);
+        let x_term = self.x.wrapping_mul(rho_minus_z) / SCALE;
+        let dy = x_term.wrapping_sub(self.y) / 100;
         
         // dz = (x * y - beta * z) * dt
-        // beta * z = (8/3) * z = (8 * z) / 3
-        let xy = (self.x.wrapping_mul(self.y)) / SCALE;
-        let beta_z = (self.beta_num * self.z) / self.beta_den;
-        let dz = (xy - beta_z) / 100;
+        // FIXED: Use safe division with beta_den (should never be zero)
+        let xy = self.x.wrapping_mul(self.y) / SCALE;
+        let beta_z = if self.beta_den != 0 {
+            (self.beta_num.wrapping_mul(self.z)) / self.beta_den
+        } else {
+            self.z // Fallback if beta_den is somehow zero
+        };
+        let dz = xy.wrapping_sub(beta_z) / 100;
 
         self.x += dx;
         self.y += dy;

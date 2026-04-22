@@ -9,7 +9,10 @@ impl TemporalBinding {
     pub fn new() -> Self {
         let start = SystemTime::now();
         let timestamp = start.duration_since(UNIX_EPOCH)
-            .expect("Time went backwards")
+            .unwrap_or_else(|_| {
+                // Fallback to 0 if time goes backwards
+                std::time::Duration::from_secs(0)
+            })
             .as_secs();
         Self { timestamp }
     }

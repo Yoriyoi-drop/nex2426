@@ -1,6 +1,7 @@
 use crate::kernel::NexKernel;
 use crate::security::memory::Protected;
 use crate::transform::stage_chaos::ChaosEngine;
+use crate::utils::entropy::SecureRng;
 
 /// Nex Digital Signature Standard (NDSS)
 /// A Post-Quantum Lattice-Based Signature Scheme simulation suitable for high-performance usage.
@@ -29,6 +30,12 @@ pub struct NexSigner {
     matrix_a: Box<[i64; LATTICE_DIM * LATTICE_DIM]>, // Global Matrix A
 }
 
+impl Default for NexSigner {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl NexSigner {
     pub fn new() -> Self {
         // Deterministically generate Matrix A using Kernel
@@ -39,12 +46,15 @@ impl NexSigner {
         
         // Expand hash to fill matrix
         let mut matrix = Box::new([0i64; LATTICE_DIM * LATTICE_DIM]);
-        let mut rng = ChaosEngine::new([
-            u64::from_le_bytes(hash[0..8].try_into().unwrap()),
-            u64::from_le_bytes(hash[8..16].try_into().unwrap()),
-            u64::from_le_bytes(hash[16..24].try_into().unwrap()),
-            u64::from_le_bytes(hash[24..32].try_into().unwrap()),
-        ]);
+        
+        // Safe array conversion with fallback
+        let seed_array = [
+            if hash.len() >= 8 { u64::from_le_bytes(hash[0..8].try_into().unwrap_or([0u8; 8])) } else { 0 },
+            if hash.len() >= 16 { u64::from_le_bytes(hash[8..16].try_into().unwrap_or([0u8; 8])) } else { 0 },
+            if hash.len() >= 24 { u64::from_le_bytes(hash[16..24].try_into().unwrap_or([0u8; 8])) } else { 0 },
+            if hash.len() >= 32 { u64::from_le_bytes(hash[24..32].try_into().unwrap_or([0u8; 8])) } else { 0 },
+        ];
+        let mut rng = ChaosEngine::new(seed_array);
         
         for i in 0..matrix.len() {
             matrix[i] = (rng.next_u64() % (MODULUS as u64)) as i64;
@@ -112,7 +122,7 @@ impl NexSigner {
         }
     }
     
-    pub fn verify(&self, msg: &[u8], pk: &PublicKey, sig: &Signature) -> bool {
+    pub fn verify(&self, msg: &[u8], _pk: &PublicKey, sig: &Signature) -> bool {
         // 1. Reconstruct c_val from sig.c
         let c_val = sig.c.iter().fold(0i64, |acc, &x| acc + (x as i64)) % 16;
         
@@ -138,14 +148,14 @@ impl NexSigner {
         
         // Calculate c*t
         let mut ct = [0i64; LATTICE_DIM];
-        for i in 0..LATTICE_DIM {
-            ct[i] = (c_val * pk.t[i]) % MODULUS;
+        for (i, ct_val) in ct.iter_mut().enumerate().take(LATTICE_DIM) {
+            *ct_val = (self.matrix_a[i * LATTICE_DIM + i] * c_val) % MODULUS;
         }
         
         // w_prime = Az - ct
         let mut w_prime = [0i64; LATTICE_DIM];
-        for i in 0..LATTICE_DIM {
-            w_prime[i] = (az[i] - ct[i]).rem_euclid(MODULUS);
+        for (i, w_prime_val) in w_prime.iter_mut().enumerate().take(LATTICE_DIM) {
+            *w_prime_val = (az[i] - ct[i]).rem_euclid(MODULUS);
         }
         
         // 3. Compute c' = Hash(w' || msg)
@@ -164,58 +174,50 @@ impl NexSigner {
     
     fn sample_small_vector(&self) -> [i64; LATTICE_DIM] {
         // Random coeffs in [-1, 1] range approx
-        // We use OS random for private key components
-        use std::fs::File;
-        use std::io::Read;
-        let mut f = File::open("/dev/urandom").unwrap();
-        let mut buf = [0u8; LATTICE_DIM];
-        f.read_exact(&mut buf).unwrap();
+        // Use cross-platform secure entropy for private key components
+        let mut rng = SecureRng::new().unwrap_or_else(|_| SecureRng::default());
         
         let mut v = [0i64; LATTICE_DIM];
-        for i in 0..LATTICE_DIM {
-            v[i] = (buf[i] % 3) as i64 - 1; // -1, 0, 1
+        for (_i, v_val) in v.iter_mut().enumerate().take(LATTICE_DIM) {
+            *v_val = rng.next_i64_range(-1, 1).unwrap_or(0);
         }
         v
     }
     
     fn sample_y_vector(&self) -> [i64; LATTICE_DIM] {
         // Ephemeral y needs to be larger to mask s
-        // Range [-100, 100]
-        use std::fs::File;
-        use std::io::Read;
-        let mut f = File::open("/dev/urandom").unwrap();
-        let mut buf = [0u8; LATTICE_DIM];
-        f.read_exact(&mut buf).unwrap();
+        // Range [-100, 100] using secure entropy
+        let mut rng = SecureRng::new().unwrap_or_else(|_| SecureRng::default());
         
         let mut v = [0i64; LATTICE_DIM];
-        for i in 0..LATTICE_DIM {
-            v[i] = (buf[i] as i64) % 200 - 100;
+        for (_i, v_val) in v.iter_mut().enumerate().take(LATTICE_DIM) {
+            *v_val = rng.next_i64_range(-100, 100).unwrap_or(0);
         }
         v
     }
     
     fn matrix_vector_mul(&self, vec: &[i64; LATTICE_DIM], err: &[i64; LATTICE_DIM]) -> [i64; LATTICE_DIM] {
         let mut res = [0i64; LATTICE_DIM];
-        for row in 0..LATTICE_DIM {
+        for (row, res_val) in res.iter_mut().enumerate().take(LATTICE_DIM) {
             let mut sum = 0i64;
-            for col in 0..LATTICE_DIM {
+            for (col, &vec_val) in vec.iter().enumerate().take(LATTICE_DIM) {
                 let a_val = self.matrix_a[row * LATTICE_DIM + col];
-                sum = (sum + a_val * vec[col]) % MODULUS;
+                sum = (sum + a_val * vec_val) % MODULUS;
             }
-            res[row] = (sum + err[row]).rem_euclid(MODULUS);
+            *res_val = (sum + err[row]).rem_euclid(MODULUS);
         }
         res
     }
     
     fn matrix_vector_mul_simple(&self, vec: &[i64]) -> [i64; LATTICE_DIM] {
          let mut res = [0i64; LATTICE_DIM];
-        for row in 0..LATTICE_DIM {
+        for (row, res_val) in res.iter_mut().enumerate().take(LATTICE_DIM) {
             let mut sum = 0i64;
-            for col in 0..LATTICE_DIM {
+            for (col, &vec_val) in vec.iter().enumerate().take(LATTICE_DIM) {
                 let a_val = self.matrix_a[row * LATTICE_DIM + col];
-                sum = (sum + a_val * vec[col]) % MODULUS;
+                sum += a_val * vec_val;
             }
-            res[row] = sum.rem_euclid(MODULUS);
+            *res_val = sum % MODULUS;
         }
         res
     }

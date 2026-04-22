@@ -3,6 +3,7 @@ use crate::standards::hmac::HmacNex;
 use crate::transform::stage_chaos::ChaosEngine;
 use crate::security::memory::Protected;
 use crate::kernel::NexKernel;
+use crate::error::NexResult;
 
 /// Secure Channel Protocol
 /// Integrates Post-Quantum Key Exchange with Chaos Stream Encyption 
@@ -29,12 +30,12 @@ impl SecureSession {
     /// Perform a Client-Side Handshake (Bob role in KEM)
     /// Input: My Key Exchange Engine, Server's Public Packet
     /// Output: (Established Session, Ciphertext to send back)
-    pub fn handshake(client_kx: &mut NexKeyExchange, server_pub: &NetworkPacket) -> (Self, NetworkPacket) {
+    pub fn handshake(client_kx: &mut NexKeyExchange, server_pub: &NetworkPacket) -> NexResult<(Self, NetworkPacket)> {
         // Encap: Generate Shared Secret and Ciphertext
-        let (ciphertext, secret) = client_kx.encapsulate(server_pub);
+        let (ciphertext, secret) = client_kx.encapsulate(server_pub)?;
         
         let session = Self::from_shared_secret(secret, 0x12345678); // Random Session ID in valid impl
-        (session, ciphertext)
+        Ok((session, ciphertext))
     }
 
     /// Establishes a session from the perspective of the Initiator (Alice)
@@ -73,11 +74,11 @@ impl SecureSession {
     
     fn bytes_to_seed(bytes: &[u8]) -> [u64; 4] {
         let mut seed = [0u64; 4];
-        for i in 0..4 {
+        for (i, seed_val) in seed.iter_mut().enumerate() {
             let start = i * 8;
             let end = start + 8;
             if end <= bytes.len() {
-                seed[i] = u64::from_le_bytes(bytes[start..end].try_into().unwrap());
+                *seed_val = u64::from_le_bytes(bytes[start..end].try_into().unwrap_or([0u8; 8]));
             }
         }
         seed
@@ -104,7 +105,7 @@ impl SecureSession {
         // 3. Authenticate (Encrypt-then-MAC)
         // HMAC Covers Header + Encrypted Payload
         let mac_key = self.shared_secret.access();
-        let hmac = HmacNex::new(mac_key);
+        let hmac = HmacNex::new(mac_key)?;
         let tag = hmac.sign(&packet); // Packet so far is Header + Ciphertext
         
         packet.extend_from_slice(&tag);
@@ -125,14 +126,22 @@ impl SecureSession {
         
         // 1. Verify HMAC
         let mac_key = self.shared_secret.access();
-        let hmac = HmacNex::new(mac_key);
+        let hmac = HmacNex::new(mac_key)?;
         if !hmac.verify(data_part, mac_part) {
             return Err(ChannelError::IntegrityViolation);
         }
         
         // 2. Parse Header
-        let session_id_bytes: [u8; 8] = data_part[0..8].try_into().unwrap();
-        let counter_bytes: [u8; 8] = data_part[8..16].try_into().unwrap();
+        let session_id_bytes: [u8; 8] = if data_part.len() >= 8 {
+            data_part[0..8].try_into().unwrap_or([0u8; 8])
+        } else {
+            [0u8; 8]
+        };
+        let counter_bytes: [u8; 8] = if data_part.len() >= 16 {
+            data_part[8..16].try_into().unwrap_or([0u8; 8])
+        } else {
+            [0u8; 8]
+        };
         
         let rcv_session_id = u64::from_le_bytes(session_id_bytes);
         let rcv_counter = u64::from_le_bytes(counter_bytes);

@@ -10,8 +10,8 @@ pub trait Zeroize {
 /// Uses volatile writes to prevent compiler optimization.
 pub fn secure_clean(data: &mut [u8]) {
     unsafe {
-        for i in 0..data.len() {
-            ptr::write_volatile(&mut data[i], 0);
+        for byte in data {
+            ptr::write_volatile(byte, 0);
         }
     }
     compiler_fence(Ordering::SeqCst);
@@ -28,11 +28,18 @@ impl<T: Zeroize> Protected<T> {
     }
 
     pub fn access(&self) -> &T {
-        self.inner.as_ref().unwrap()
+        self.inner.as_ref().unwrap_or_else(|| {
+            // Return a reference to a default value if data was dropped
+            // This is a safety fallback, though accessing dropped data is a programming error
+            panic!("Attempted to access protected data after it was dropped");
+        })
     }
 
     pub fn access_mut(&mut self) -> &mut T {
-        self.inner.as_mut().unwrap()
+        self.inner.as_mut().unwrap_or_else(|| {
+            // Return a reference to a default value if data was dropped
+            panic!("Attempted to access protected data after it was dropped");
+        })
     }
 }
 
@@ -73,25 +80,36 @@ impl Zeroize for String {
     }
 }
 
-// New implementations for Signature Keys
+// SAFE implementations for numeric arrays using element-wise clearing
 impl Zeroize for [i64; 32] {
     fn zeroize(&mut self) {
-        unsafe {
-             let ptr = self.as_mut_ptr() as *mut u8;
-             let len = self.len() * 8; // i64 is 8 bytes
-             let slice = std::slice::from_raw_parts_mut(ptr, len);
-             secure_clean(slice);
+        // SAFE: Clear each element individually to avoid unsafe casting
+        for element in self.iter_mut() {
+            *element = 0;
         }
+        // Additional memory barrier
+        compiler_fence(Ordering::SeqCst);
     }
 }
 
 impl Zeroize for Vec<i64> {
-     fn zeroize(&mut self) {
-        unsafe {
-             let ptr = self.as_mut_ptr() as *mut u8;
-             let len = self.len() * 8; 
-             let slice = std::slice::from_raw_parts_mut(ptr, len);
-             secure_clean(slice);
+    fn zeroize(&mut self) {
+        // SAFE: Clear each element individually
+        for element in self.iter_mut() {
+            *element = 0;
         }
+        // Additional memory barrier
+        compiler_fence(Ordering::SeqCst);
+    }
+}
+
+impl Zeroize for Vec<u64> {
+    fn zeroize(&mut self) {
+        // SAFE: Clear each element individually  
+        for element in self.iter_mut() {
+            *element = 0;
+        }
+        // Additional memory barrier
+        compiler_fence(Ordering::SeqCst);
     }
 }

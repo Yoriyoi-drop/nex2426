@@ -98,12 +98,12 @@ impl DataConverter {
         match format.to_lowercase().as_str() {
             "base64" => {
                 // Extract hash part and convert to base64
-                let hash_part = hash.split('$').last().unwrap_or(hash);
+                let hash_part = hash.split('$').next_back().unwrap_or(hash);
                 Ok(general_purpose::STANDARD.encode(hash_part))
             },
             "hex" => {
                 // Convert to hex representation
-                let hash_part = hash.split('$').last().unwrap_or(hash);
+                let hash_part = hash.split('$').next_back().unwrap_or(hash);
                 Ok(hex::encode(hash_part.as_bytes()))
             },
             "json" => {
@@ -114,7 +114,7 @@ impl DataConverter {
                 }).to_string())
             },
             "raw" => {
-                Ok(hash.split('$').last().unwrap_or(hash).to_string())
+                Ok(hash.split('$').next_back().unwrap_or(hash).to_string())
             },
             _ => Err(format!("Unsupported format: {}", format)),
         }
@@ -233,7 +233,7 @@ impl PerformanceMonitor {
     pub fn record_timing(&mut self, operation: &str, duration_ms: u64) {
         self.metrics
             .entry(operation.to_string())
-            .or_insert_with(Vec::new)
+            .or_default()
             .push(duration_ms);
     }
     
@@ -247,8 +247,8 @@ impl PerformanceMonitor {
         
         let total: u64 = timings.iter().sum();
         let avg = total / timings.len() as u64;
-        let min = *timings.iter().min().unwrap();
-        let max = *timings.iter().max().unwrap();
+        let min = *timings.iter().min().unwrap_or(&0);
+        let max = *timings.iter().max().unwrap_or(&0);
         
         // Calculate median
         let mut sorted_timings = timings.clone();
@@ -325,28 +325,28 @@ mod tests {
     fn test_data_converter() {
         let hash = "$nex6$1$abc123$def456";
         
-        let raw = DataConverter::convert_hash_format(hash, "raw").unwrap();
+        let raw = DataConverter::convert_hash_format(hash, "raw").expect("Failed to convert to raw format");
         assert_eq!(raw, "def456");
         
-        let json = DataConverter::convert_hash_format(hash, "json").unwrap();
+        let json = DataConverter::convert_hash_format(hash, "json").expect("Failed to convert to json format");
         assert!(json.contains("hash"));
         assert!(json.contains("nex6"));
     }
     
     #[test]
     fn test_file_utils() {
-        let dir = tempdir().unwrap();
+        let dir = tempdir().expect("Failed to create temp directory");
         let file_path = dir.path().join("test.txt");
         
         // Create test file
-        fs::write(&file_path, "test content").unwrap();
+        fs::write(&file_path, "test content").expect("Failed to write test file");
         
         // Calculate hash
-        let hash = FileUtils::file_hash(&file_path, "test_key", 1).unwrap();
+        let hash = FileUtils::file_hash(&file_path, "test_key", 1).expect("Failed to calculate file hash");
         assert!(!hash.is_empty());
         
         // Verify file
-        let is_valid = FileUtils::verify_file(&file_path, &hash, "test_key", 1).unwrap();
+        let is_valid = FileUtils::verify_file(&file_path, &hash, "test_key", 1).expect("Failed to verify file");
         assert!(is_valid);
     }
     
@@ -358,7 +358,7 @@ mod tests {
         monitor.record_timing("test_op", 200);
         monitor.record_timing("test_op", 150);
         
-        let stats = monitor.get_stats("test_op").unwrap();
+        let stats = monitor.get_stats("test_op").expect("Failed to get stats");
         assert_eq!(stats.count, 3);
         assert_eq!(stats.total_ms, 450);
         assert_eq!(stats.avg_ms, 150);

@@ -1,4 +1,5 @@
 use crate::kernel::NexKernel;
+use serde::{Deserialize, Serialize};
 use std::time::{SystemTime, UNIX_EPOCH};
 use std::fs::OpenOptions;
 use std::io::Write;
@@ -23,7 +24,10 @@ impl AuditLogger {
     }
     
     pub fn log(&mut self, event_type: &str, user: &str, details: &str) {
-        let timestamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
+        let timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_else(|_| std::time::Duration::from_secs(0))
+            .as_secs();
         
         let record = format!("{}|{}|{}|{}|{}", self.last_hash, timestamp, event_type, user, details);
         
@@ -42,6 +46,7 @@ impl AuditLogger {
         self.last_hash = hash_hex;
     }
 }
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ComplianceStandard {
     GDPR,
     HIPAA,

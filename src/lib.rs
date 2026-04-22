@@ -18,6 +18,11 @@ pub mod security;
 pub mod nex_io;
 pub mod features;
 pub mod c_api;
+pub mod blockchain;
+pub mod error;
+pub mod validation;
+pub mod memory_opt;
+pub mod logging;
 
 #[cfg(test)]
 mod tests {

@@ -46,7 +46,7 @@ impl NexLedger {
         
         let timestamp = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
+            .unwrap_or_else(|_| std::time::Duration::from_secs(0))
             .as_secs();
 
         // 2. Prepare Header for Hashing/Signing
@@ -80,7 +80,7 @@ impl NexLedger {
     
     pub fn add_block(&mut self, block: Block, validator_pub: &PublicKey) -> bool {
         // 1. Verify Linkage
-        let last = self.chain.last().unwrap();
+        let last = self.chain.last().expect("Cannot add block to empty chain");
         if block.prev_hash != last.hash {
             println!("Linkage Error: {} != {}", block.prev_hash, last.hash);
             return false;
